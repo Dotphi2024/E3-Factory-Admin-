@@ -64,8 +64,8 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label for="birth_date" class="form-label">Birth Date</label>
-                                    <input type="date" class="form-control" id="birth_date" name="birth_date"
-                                        value="{{ old('birth_date') }}">
+                                    <input type="text" class="form-control" id="birth_date" name="birth_date"
+                                        value="{{ old('birth_date') }}" placeholder="YYYY-MM-DD or DD-MM-YYYY">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="address" class="form-label">Address</label>

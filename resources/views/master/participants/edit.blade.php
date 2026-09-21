@@ -69,8 +69,8 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label for="birth_date" class="form-label">Birth Date</label>
-                                    <input type="date" class="form-control" id="birth_date" name="birth_date"
-                                        value="{{ $participant->birth_date ? $participant->birth_date->format('Y-m-d') : '' }}">
+                                    <input type="text" class="form-control" id="birth_date" name="birth_date"
+                                        value="{{ old('birth_date', $participant->birth_date ? $participant->birth_date->format('Y-m-d') : '') }}" placeholder="YYYY-MM-DD or DD-MM-YYYY">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="address" class="form-label">Address</label>

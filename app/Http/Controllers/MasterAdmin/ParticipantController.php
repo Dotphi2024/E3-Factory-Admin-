@@ -70,7 +70,7 @@ class ParticipantController extends Controller
             $participant->mobile = $request->mobile;
             $participant->batch_id = $request->batch_id;
             $participant->email = $request->email;
-            $participant->birth_date = $request->birth_date;
+            $participant->birth_date = !empty($request->birth_date) ? date('Y-m-d', strtotime($request->birth_date)) : null;
             $participant->address = $request->address;
             $participant->country = $request->country;
             $participant->state = $request->state;
@@ -185,7 +185,7 @@ class ParticipantController extends Controller
         $participant->mobile = $request->mobile;
         $participant->batch_id = $request->batch_id;
         $participant->email = $request->email;
-        $participant->birth_date = $request->birth_date;
+        $participant->birth_date = !empty($request->birth_date) ? date('Y-m-d', strtotime($request->birth_date)) : null;
         $participant->address = $request->address;
         $participant->country = $request->country;
         $participant->state = $request->state;

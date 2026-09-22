@@ -9,6 +9,7 @@ use App\Models\ParticipantPayment;
 use App\Models\ParticipantBatch;
 use App\Models\ParticipantSessionRating;
 use App\Models\Batch;
+use App\Models\Coach;
 use App\Models\BatchSchedule;
 use App\Models\Meeting;
 use App\Models\MeetingAttendance;
@@ -32,7 +33,10 @@ class ParticipantController extends Controller
         $earth=new Earth();
         $countries=array_column($earth->getCountries()->toArray(), 'name');
         $participants = Participant::orderBy('id', 'desc')->get();
-        return view('master.participants.create', compact('batches','countries','participants'));
+        $coaches = Participant::where('is_coach', 1)->orWhereHas('batches')->distinct()->orderBy('first_name', 'ASC')->get();
+        $headCoachIds = Coach::where('is_head_coach', 1)->pluck('participant_id')->unique();
+        $headCoaches = Participant::whereIn('id', $headCoachIds)->orderBy('first_name', 'ASC')->get();
+        return view('master.participants.create', compact('batches','countries','participants','coaches','headCoaches'));
     }
     public function store(Request $request){
         $validator = \Validator::make($request->all(), [
@@ -148,7 +152,12 @@ class ParticipantController extends Controller
             $city['name'] = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $city['name']);
         }
         $participants = Participant::orderBy('id', 'desc')->where('id', '!=', $id)->get();
-        return view('master.participants.edit', compact('participant','batches','countries','states','cities','participants'));
+        $coaches = Participant::where('id', '!=', $id)->where(function($q){
+            $q->where('is_coach', 1)->orWhereHas('batches');
+        })->orderBy('first_name', 'ASC')->get();
+        $headCoachIds = Coach::where('is_head_coach', 1)->pluck('participant_id')->unique();
+        $headCoaches = Participant::whereIn('id', $headCoachIds)->where('id', '!=', $id)->orderBy('first_name', 'ASC')->get();
+        return view('master.participants.edit', compact('participant','batches','countries','states','cities','participants','coaches','headCoaches'));
     }
 
     public function update(Request $request, $id){

@@ -34,7 +34,12 @@
             {{-- Participants --}}
             <div class="card">
                 <div class="card-body">
-                    <h4 class="mb-2">Participants</h4><br>
+                    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                        <h4 class="mb-0">Participants</h4>
+                        <button type="button" id="exportBatchPendingFeesBtn" class="btn btn-outline-danger btn-sm px-3">
+                            <i class="bi bi-file-earmark-arrow-down-fill me-1"></i> Export Pending Fees CSV
+                        </button>
+                    </div>
                     <div class="table-responsive">
                         <table id="example" class="table table-striped table-bordered" style="width:100%">
                             <thead>
@@ -43,6 +48,7 @@
                                     <th>Name </th>
                                     {{-- <th>Batch</th> --}}
                                     <th>Mobile</th>
+                                    <th>Reference</th>
                                     <th>Paid Amount</th>
                                     <th>Due Amount</th>
                                     <th>Status</th>
@@ -59,6 +65,21 @@
                                         <td>{{ $participant->first_name }} {{ $participant->last_name }}</td>
                                         {{-- <td>{{ $participant->batch ? $participant->batch->name : '' }}</td> --}}
                                         <td>{{ $participant->mobile }}</td>
+                                        <td>
+                                            @if ($participant->reference)
+                                                <span class="badge bg-light-primary text-primary font-12">
+                                                    @if (in_array($participant->reference, ['Member', 'Coach', 'Head Coach']) && $participant->referenceBy)
+                                                        {{ $participant->reference }} ({{ $participant->referenceBy->first_name }} {{ $participant->referenceBy->last_name }})
+                                                    @elseif ($participant->reference_detail)
+                                                        {{ $participant->reference }} ({{ $participant->reference_detail }})
+                                                    @else
+                                                        {{ $participant->reference }}
+                                                    @endif
+                                                </span>
+                                            @else
+                                                <span class="text-muted font-12">N/A</span>
+                                            @endif
+                                        </td>
                                         <td>{{ $participant->paid_amount }}</td>
                                         <td>{{ $participant->due_amount }}</td>
                                         <td>
@@ -577,9 +598,43 @@
                                                     @endif
                                                 </a>
                                                 &nbsp;&nbsp;
+                                                <a href="javascript:void(0)" data-bs-toggle="modal"
+                                                    data-bs-target="#session-whatsapp-modal-{{ $batch_schedule->id }}"
+                                                    title="Send WhatsApp Session Reminder">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#25D366" class="bi bi-whatsapp" viewBox="0 0 16 16">
+                                                      <path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.93c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.57 6.57 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.675-.691 1.647s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.17-.478 1.338-.94.166-.464.166-.86.116-.94-.047-.08-.182-.133-.379-.232z"/>
+                                                    </svg>
+                                                </a>
                                             @endcan
                                         </td>
                                     </tr>
+
+                                    {{-- WhatsApp Session Reminder Modal --}}
+                                    <form action="{{ route('master.batches.send-session-whatsapp-reminder', $batch_schedule->id) }}" method="post">
+                                        @csrf
+                                        <div class="modal fade" id="session-whatsapp-modal-{{ $batch_schedule->id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title"><i class="bi bi-whatsapp text-success me-2"></i> Send WhatsApp Session Reminder</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p class="mb-2">Send WhatsApp reminder for <strong>{{ $batch_schedule->name ? $batch_schedule->name : 'Session #'.$batch_schedule->session_number }}</strong> to all enrolled active participants of <strong>{{ $batch->name }}</strong>.</p>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Message Template</label>
+                                                             <textarea name="message" class="form-control" rows="4" required>Dear {name}, this is a reminder for your upcoming session: '{{ $batch_schedule->name ? $batch_schedule->name : 'Session #'.$batch_schedule->session_number }}' (Batch: {{ $batch->name }})@if(!empty($batch_schedule->date)) scheduled on {{ date('d-m-Y', strtotime($batch_schedule->date)) }}@endif. Please be on time!</textarea>
+                                                            <small class="text-muted">Placeholders: <code>{name}</code>, <code>{session_name}</code>, <code>{batch_name}</code>, <code>{session_date}</code></small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                        <button type="submit" class="btn btn-success"><i class="bi bi-whatsapp me-1"></i> Send WhatsApp</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
                                 @endforeach
                             </tbody>
                         </table>
@@ -1135,6 +1190,60 @@
                 $('#update-amount').prop('readonly', false);
             }
             $('#update-batch-schedule-form').prop('action', $(this).data('url'));
-        })
+        });
+
+        // Export Batch Pending Fees CSV
+        $('#exportBatchPendingFeesBtn').on('click', function() {
+            var csv = [];
+            csv.push('"Sr. No","Participant Name","Mobile","Reference","Paid Amount (INR)","Pending Due Amount (INR)","Status","City"');
+            
+            var count = 0;
+            var table = $('#example').DataTable();
+            var allData = table.rows({ search: 'applied' }).nodes();
+
+            $(allData).each(function(rowIndex, rowElement) {
+                var cells = $(rowElement).find('td');
+                var dueText = $(cells[5]).text().trim(); // Due amount column index
+                var dueVal = parseFloat(dueText.replace(/[^0-9.-]+/g, '')) || 0;
+                
+                if (dueVal > 0) {
+                    count++;
+                    var name = $(cells[1]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var mobile = $(cells[2]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var reference = $(cells[3]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var paid = $(cells[4]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var due = $(cells[5]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var status = $(cells[6]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+                    var city = $(cells[7]).text().replace(/(\r\n|\n|\r)/gm, "").trim();
+
+                    var row = [
+                        '"' + count + '"',
+                        '"' + name.replace(/"/g, '""') + '"',
+                        '"' + mobile + '"',
+                        '"' + reference.replace(/"/g, '""') + '"',
+                        '"' + paid + '"',
+                        '"' + due + '"',
+                        '"' + status + '"',
+                        '"' + city.replace(/"/g, '""') + '"'
+                    ];
+                    csv.push(row.join(','));
+                }
+            });
+
+            if (count === 0) {
+                alert('No participants with pending fees found in this batch.');
+                return;
+            }
+
+            var csvFile = new Blob([csv.join("\n")], {type: "text/csv;charset=utf-8;"});
+            var downloadLink = document.createElement("a");
+            var filename = 'Batch_Pending_Fees_' + new Date().toISOString().slice(0,10) + '.csv';
+            downloadLink.download = filename;
+            downloadLink.href = window.URL.createObjectURL(csvFile);
+            downloadLink.style.display = "none";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        });
     </script>
 @endsection

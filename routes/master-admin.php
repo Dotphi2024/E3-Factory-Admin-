@@ -17,6 +17,7 @@ use App\Http\Controllers\MasterAdmin\GuestHomepageController;
 use App\Http\Controllers\MasterAdmin\BatchHomepageController;
 use App\Http\Controllers\MasterAdmin\MessagesController;
 use App\Http\Controllers\MasterAdmin\RecommendationController;
+use App\Http\Controllers\MasterAdmin\ValuePostController;
 
 
 Route::post('get-states',[ParticipantController::class,'getStates'])->name('get-states');
@@ -110,6 +111,7 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
         Route::get('start-all-session-assignment/{id}', [BatchController::class, 'start_all_session_assignments'])->name('master.batches.start-all-session-assignment')->middleware('permission:batch edit');
         Route::get('stop-all-session-assignment/{id}', [BatchController::class, 'stop_all_session_assignments'])->name('master.batches.stop-all-session-assignment')->middleware('permission:batch edit');
         Route::get('update-rating-start-status/{id}', [BatchController::class, 'update_rating_start_status'])->name('master.batches.update-rating-start-status')->middleware('permission:batch edit');
+        Route::post('send-session-whatsapp-reminder/{id}', [BatchController::class, 'send_session_whatsapp_reminder'])->name('master.batches.send-session-whatsapp-reminder')->middleware('permission:batch edit');
 
         // Batch Group
         Route::post('add-group/{id}', [BatchController::class, 'add_group'])->name('master.batches.add-group')->middleware('permission:batch edit');
@@ -151,6 +153,7 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
     // Coach
     Route::prefix('coaches')->group(function(){
         Route::get('list', [CoachController::class, 'list'])->name('master.coaches.list')->middleware('permission:participant list');
+        Route::get('export', [CoachController::class, 'export'])->name('master.coaches.export')->middleware('permission:participant list');
         Route::get('add', [CoachController::class, 'add'])->name('master.coaches.add')->middleware('permission:participant add');
         Route::post('add', [CoachController::class, 'store'])->name('master.coaches.store')->middleware('permission:participant add');
         Route::get('edit/{id}', [CoachController::class, 'edit'])->name('master.coaches.edit')->middleware('permission:participant edit');
@@ -159,6 +162,16 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
         Route::post('assign-batch', [CoachController::class, 'assign_batch'])->name('master.coaches.assign-batch')->middleware('permission:participant edit');
         Route::get('coach-registration-requests', [CoachController::class, 'coach_registration_requests'])->name('master.coaches.coach-registration-requests')->middleware('permission:participant list');
         Route::post('update-registration-request-status', [CoachController::class, 'update_registration_request_status'])->name('master.coaches.update-registration-request-status')->middleware('permission:participant edit');
+    });
+
+    // Value Post
+    Route::prefix('value-posts')->group(function(){
+        Route::get('list', [ValuePostController::class, 'list'])->name('master.value-posts.list');
+        Route::get('add', [ValuePostController::class, 'add'])->name('master.value-posts.add');
+        Route::post('store', [ValuePostController::class, 'store'])->name('master.value-posts.store');
+        Route::get('resend/{id}', [ValuePostController::class, 'resend'])->name('master.value-posts.resend');
+        Route::get('send-now/{id}', [ValuePostController::class, 'sendNow'])->name('master.value-posts.send-now');
+        Route::get('delete/{id}', [ValuePostController::class, 'delete'])->name('master.value-posts.delete');
     });
 
     // Photo Gallery

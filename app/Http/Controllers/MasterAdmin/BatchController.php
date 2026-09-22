@@ -19,6 +19,8 @@ use Rinvex\Country\CountryLoader;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\FcmNotificationService;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class BatchController extends Controller
 {
@@ -605,5 +607,68 @@ class BatchController extends Controller
         $batch_schedule->is_coach_rating_started = !$batch_schedule->is_coach_rating_started;
         $batch_schedule->save();
         return redirect()->back()->with('success', 'Coach Rating Status Updated Successfully');
+    }
+
+    public function send_session_whatsapp_reminder(Request $request, $id)
+    {
+        $batchSchedule = BatchSchedule::with(['batch.batchParticipants'])->findOrFail($id);
+        $participants = $batchSchedule->batch?->batchParticipants()->where('is_active', 1)->get() ?? collect();
+
+        if ($participants->isEmpty()) {
+            return redirect()->back()->with('error', 'No active participants enrolled in this batch');
+        }
+
+        $sessionName = $batchSchedule->name ? $batchSchedule->name : 'Session #' . $batchSchedule->session_number;
+        $batchName = $batchSchedule->batch?->name ?? '';
+        $sessionDate = $batchSchedule->date ? date('d-m-Y', strtotime($batchSchedule->date)) : '';
+
+        $customMessageTemplate = $request->input('message');
+        $successCount = 0;
+
+        foreach ($participants as $participant) {
+            if (empty($participant->mobile)) {
+                continue;
+            }
+
+            if ($customMessageTemplate) {
+                $message = str_replace(
+                    ['{name}', '{session_name}', '{batch_name}', '{session_date}'],
+                    [$participant->first_name, $sessionName, $batchName, $sessionDate],
+                    $customMessageTemplate
+                );
+            } else {
+                $message = "Dear {$participant->first_name}, this is a reminder for your upcoming session: '{$sessionName}' (Batch: {$batchName}) scheduled on {$sessionDate}. Please be on time!";
+            }
+
+            if ($this->sendWhatsAppMessage($participant->mobile, $message)) {
+                $successCount++;
+            }
+        }
+
+        return redirect()->back()->with('success', "WhatsApp session reminder sent to {$successCount} active participants!");
+    }
+
+    private function sendWhatsAppMessage($mobile, $message)
+    {
+        try {
+            $mobile = preg_replace('/[^0-9]/', '', $mobile);
+            if (strlen($mobile) === 10) {
+                $mobile = '91' . $mobile;
+            }
+
+            $apiUrl   = env('WHATSAPP_API_URL', 'https://api.dotphi.com/wapp/v2/api/send');
+            $apiToken = env('WHATSAPP_API_TOKEN', '');
+
+            $response = Http::get($apiUrl, [
+                'apikey' => $apiToken,
+                'mobile' => $mobile,
+                'msg'    => $message,
+            ]);
+
+            return $response->successful();
+        } catch (\Exception $e) {
+            Log::error("Failed to send WhatsApp session reminder to {$mobile}: " . $e->getMessage());
+            return false;
+        }
     }
 }

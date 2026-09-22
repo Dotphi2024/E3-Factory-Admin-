@@ -13,6 +13,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('participants:send-birthday-wishes')->dailyAt('09:00');
+        $schedule->command('value-posts:send-scheduled')->dailyAt('09:00');
     }
 
     /**

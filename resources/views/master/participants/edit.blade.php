@@ -115,6 +115,14 @@
                                         <option label="Select"></option>
                                         <option value="Member"
                                             {{ $participant->reference == 'Member' ? 'selected' : '' }}>Member</option>
+                                        <option value="Coach"
+                                            {{ $participant->reference == 'Coach' ? 'selected' : '' }}>Coach</option>
+                                        <option value="Head Coach"
+                                            {{ $participant->reference == 'Head Coach' ? 'selected' : '' }}>Head Coach</option>
+                                        <option value="Offline Orientation"
+                                            {{ $participant->reference == 'Offline Orientation' ? 'selected' : '' }}>Offline Orientation</option>
+                                        <option value="Online Orientation"
+                                            {{ $participant->reference == 'Online Orientation' ? 'selected' : '' }}>Online Orientation</option>
                                         <option value="Social Media"
                                             {{ $participant->reference == 'Social Media' ? 'selected' : '' }}>Social Media
                                         </option>
@@ -125,8 +133,12 @@
                                 </div>
                                 <div class="col-md-6" id="reference_detail_div">
                                     <label for="reference_detail" class="form-label">Reference Detail</label>
+                                    <input type="text" name="reference_detail" id="reference_detail_orientation" class="form-control"
+                                        value="{{ in_array($participant->reference, ['Offline Orientation', 'Online Orientation']) ? $participant->reference_detail : '' }}"
+                                        placeholder="Enter reference detail"
+                                        @if (!in_array($participant->reference, ['Offline Orientation', 'Online Orientation'])) style="display: none" disabled @endif>
                                     <select name="reference_detail" id="reference_detail_social" class="form-control"
-                                        @if ($participant->reference !== 'Social Media') style="display: none" @endif>
+                                        @if ($participant->reference !== 'Social Media') style="display: none" disabled @endif>
 
                                         <option value="Facebook"
                                             {{ $participant->reference_detail == 'Facebook' ? 'selected' : '' }}>Facebook
@@ -146,20 +158,40 @@
                                     </select>
                                     <select name="reference_detail" id="reference_detail_advertisement"
                                         class="form-control"
-                                        @if ($participant->reference !== 'Advertisement') style="display: none" @endif>
+                                        @if ($participant->reference !== 'Advertisement') style="display: none" disabled @endif>
 
-                                        <option value="Google">Google</option>
-                                        <option value="TV">TV</option>
-                                        <option value="Others">Others</option>
+                                        <option value="Google" {{ $participant->reference_detail == 'Google' ? 'selected' : '' }}>Google</option>
+                                        <option value="TV" {{ $participant->reference_detail == 'TV' ? 'selected' : '' }}>TV</option>
+                                        <option value="Others" {{ $participant->reference_detail == 'Others' ? 'selected' : '' }}>Others</option>
                                     </select>
                                     <select name="reference_detail" id="reference_detail_member" class="single-select"
-                                        @if ($participant->reference !== 'Member') style="display: none" @endif>
+                                        @if ($participant->reference !== 'Member') style="display: none" disabled @endif>
 
-                                        @foreach ($participants as $participant)
-                                            <option value="{{ $participant->id }}"
-                                                {{ $participant->id == $participant->reference_detail ? 'selected' : '' }}>
-                                                {{ $participant->first_name }}
-                                                {{ $participant->last_name }}({{ $participant->mobile }})</option>
+                                        @foreach ($participants as $p)
+                                            <option value="{{ $p->id }}"
+                                                {{ $p->id == $participant->reference_detail ? 'selected' : '' }}>
+                                                {{ $p->first_name }}
+                                                {{ $p->last_name }} ({{ $p->mobile }})</option>
+                                        @endforeach
+                                    </select>
+                                    <select name="reference_detail" id="reference_detail_coach" class="single-select"
+                                        @if ($participant->reference !== 'Coach') style="display: none" disabled @endif>
+
+                                        @foreach ($coaches as $coach)
+                                            <option value="{{ $coach->id }}"
+                                                {{ $coach->id == $participant->reference_detail ? 'selected' : '' }}>
+                                                {{ $coach->first_name }}
+                                                {{ $coach->last_name }} ({{ $coach->mobile }})</option>
+                                        @endforeach
+                                    </select>
+                                    <select name="reference_detail" id="reference_detail_head_coach" class="single-select"
+                                        @if ($participant->reference !== 'Head Coach') style="display: none" disabled @endif>
+
+                                        @foreach ($headCoaches as $headCoach)
+                                            <option value="{{ $headCoach->id }}"
+                                                {{ $headCoach->id == $participant->reference_detail ? 'selected' : '' }}>
+                                                {{ $headCoach->first_name }}
+                                                {{ $headCoach->last_name }} ({{ $headCoach->mobile }})</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -179,29 +211,54 @@
 @endsection
 @section('custom_js')
     <script>
-        $(document).on('change', '#reference', function() {
-            let reference = $(this).val();
-            if (reference == 'Social Media') {
-                $('#reference_detail_social').show();
-                $('#reference_detail_advertisement').hide();
-                $('#reference_detail_member').select2('destroy').hide();
-            } else if (reference == 'Advertisement') {
-                $('#reference_detail_advertisement').show();
-                $('#reference_detail_social').hide();
-                $('#reference_detail_member').select2('destroy').hide();
-            } else if (reference == 'Member') {
-                $('#reference_detail_member').select2({
-                    tags: true,
+        function toggleReferenceDetails(reference) {
+            $('#reference_detail_social, #reference_detail_advertisement, #reference_detail_member, #reference_detail_coach, #reference_detail_head_coach, #reference_detail_orientation')
+                .hide()
+                .prop('disabled', true);
+
+            ['#reference_detail_member', '#reference_detail_coach', '#reference_detail_head_coach'].forEach(function(id) {
+                if ($(id).hasClass("select2-hidden-accessible")) {
+                    $(id).select2('destroy');
+                }
+            });
+
+            if (reference === 'Social Media') {
+                $('#reference_detail_social').prop('disabled', false).show();
+            } else if (reference === 'Advertisement') {
+                $('#reference_detail_advertisement').prop('disabled', false).show();
+            } else if (reference === 'Offline Orientation' || reference === 'Online Orientation') {
+                $('#reference_detail_orientation').prop('disabled', false).show();
+            } else if (reference === 'Member') {
+                $('#reference_detail_member').prop('disabled', false).show().select2({
                     theme: "bootstrap4",
                     width: '100%',
                     placeholder: "Select",
                     allowClear: true
                 });
-                $('#reference_detail_member').show();
-                $('#reference_detail_advertisement').hide();
-                $('#reference_detail_social').hide();
+            } else if (reference === 'Coach') {
+                $('#reference_detail_coach').prop('disabled', false).show().select2({
+                    theme: "bootstrap4",
+                    width: '100%',
+                    placeholder: "Select",
+                    allowClear: true
+                });
+            } else if (reference === 'Head Coach') {
+                $('#reference_detail_head_coach').prop('disabled', false).show().select2({
+                    theme: "bootstrap4",
+                    width: '100%',
+                    placeholder: "Select",
+                    allowClear: true
+                });
             }
-        })
+        }
+
+        $(document).ready(function() {
+            toggleReferenceDetails($('#reference').val());
+        });
+
+        $(document).on('change', '#reference', function() {
+            toggleReferenceDetails($(this).val());
+        });
         $(document).on('change', '#country', function() {
             let country = $(this).val();
             if (country) {

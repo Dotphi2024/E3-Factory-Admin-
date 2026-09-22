@@ -13,7 +13,7 @@ class CoachController extends Controller
 {
     public function list(){
         $participants = Participant::orderBy('id', 'desc')->where('is_coach',1)->get();
-        $batches = Batch::active()->where('start_coach_registration',1)->where('status', '!=','completed')->orderBy('id', 'desc')->get();
+        $batches = Batch::active()->where('status', '!=','completed')->orderBy('id', 'desc')->get();
         return view('master.coach.list', compact('participants','batches'));
     }
     public function assign_batch(Request $request){
@@ -72,7 +72,7 @@ class CoachController extends Controller
     }
     public function edit($id){
         $coach = Coach::findOrFail($id);
-        $batches = Batch::active()->where('start_coach_registration',1)->where('status', '!=','completed')->orderBy('id', 'desc')->get();
+        $batches = Batch::active()->where('status', '!=','completed')->orderBy('id', 'desc')->get();
         $participants = Participant::whereHas('batch',function($query){
             $query->where('status','completed');
         })->orderBy('id', 'desc')->get();
@@ -120,5 +120,64 @@ class CoachController extends Controller
             $participant->save();
         }
         return redirect()->back()->with('success', 'Status Updated Successfully');
+    }
+
+    public function export()
+    {
+        $coaches = Participant::where('is_coach', 1)->orderBy('first_name', 'asc')->get();
+
+        $csvFileName = 'coaches_list_' . date('Y_m_d_H_i_s') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$csvFileName}\"",
+        ];
+
+        return response()->stream(function () use ($coaches) {
+            $file = fopen('php://output', 'w');
+
+            // CSV Header
+            fputcsv($file, [
+                'No',
+                'Full Name',
+                'Mobile',
+                'Email',
+                'Gender',
+                'City',
+                'State',
+                'Reference',
+                'Assigned Batches',
+                'Status'
+            ]);
+
+            foreach ($coaches as $index => $coach) {
+                $batchNames = $coach->batches->pluck('name')->implode(', ');
+                if (empty($batchNames)) {
+                    $batchNames = 'No Service';
+                }
+
+                $refText = $coach->reference ?: 'N/A';
+                if (in_array($coach->reference, ['Member', 'Coach', 'Head Coach']) && $coach->referenceBy) {
+                    $refText .= ' (' . $coach->referenceBy->first_name . ' ' . $coach->referenceBy->last_name . ')';
+                } elseif ($coach->reference_detail) {
+                    $refText .= ' (' . $coach->reference_detail . ')';
+                }
+
+                fputcsv($file, [
+                    $index + 1,
+                    $coach->first_name . ' ' . $coach->last_name,
+                    $coach->mobile ?: 'N/A',
+                    $coach->email ?: 'N/A',
+                    $coach->gender ?: 'N/A',
+                    $coach->city ?: 'N/A',
+                    $coach->state ?: 'N/A',
+                    $refText,
+                    $batchNames,
+                    $coach->is_active ? 'Active' : 'Inactive'
+                ]);
+            }
+
+            fclose($file);
+        }, 200, $headers);
     }
 }

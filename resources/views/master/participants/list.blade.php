@@ -52,6 +52,7 @@
                             <th>Current Batch</th>
                             <th>Total Batches Enrolled</th>
                             <th>Mobile</th>
+                            <th>Reference</th>
                             <th>Paid Amount</th>
                             <th>Due Amount</th>
                             <th>Status</th>
@@ -77,6 +78,21 @@
                                 </td>
                                 <td>{{ $participant->participantBatches->count() }}</td>
                                 <td>{{ $participant->mobile }}</td>
+                                <td>
+                                    @if ($participant->reference)
+                                        <span class="badge bg-light-primary text-primary font-12">
+                                            @if (in_array($participant->reference, ['Member', 'Coach', 'Head Coach']) && $participant->referenceBy)
+                                                {{ $participant->reference }} ({{ $participant->referenceBy->first_name }} {{ $participant->referenceBy->last_name }})
+                                            @elseif ($participant->reference_detail)
+                                                {{ $participant->reference }} ({{ $participant->reference_detail }})
+                                            @else
+                                                {{ $participant->reference }}
+                                            @endif
+                                        </span>
+                                    @else
+                                        <span class="text-muted font-12">N/A</span>
+                                    @endif
+                                </td>
                                 <td>{{ $participant->paid_amount }}</td>
                                 <td>{{ $participant->due_amount }}</td>
                                 <td>
@@ -198,7 +214,7 @@
                 // Get header rows (excluding the last column 'Actions')
                 var headers = [];
                 $('#example th').each(function(index, item) {
-                    if (index < 11) { // Stop before the 12th column (index 11)
+                    if (index < 12) { // Stop before the 13th column (index 12 Actions)
                         headers.push('"' + $(item).text().trim().replace(/"/g, '""') + '"');
                     }
                 });
@@ -213,7 +229,7 @@
                     var cells = $(rowElement).find('td');
 
                     cells.each(function(colIndex, cellElement) {
-                        if (colIndex < 11) { // Skip the Actions column
+                        if (colIndex < 12) { // Skip the Actions column
                             // Clean up layout break tags and outer whitespace
                             var textData = $(cellElement).text().replace(/(\r\n|\n|\r)/gm, "").trim();
                             

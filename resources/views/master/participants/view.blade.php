@@ -182,6 +182,10 @@
                     <h6 class="">City: {{ $participant->city }}</h6>
                     <h6 class="">State: {{ $participant->state }}</h6>
                     <h6 class="">Country: {{ $participant->country }}</h6>
+                    <h6 class="">Reference By: <span class="badge bg-light-primary text-primary">{{ $participant->reference ?: 'N/A' }}</span></h6>
+                    @if ($participant->reference_detail)
+                        <h6 class="">Reference Detail: {{ $participant->reference_detail }}</h6>
+                    @endif
                     @if ($participant->profile_photo)
                         <h6 class="">Profile Photo: <a
                                 href="{{ asset('uploads/participants/profile-photos/' . $participant->profile_photo) }}"

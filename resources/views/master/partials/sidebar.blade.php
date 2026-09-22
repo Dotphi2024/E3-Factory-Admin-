@@ -150,6 +150,13 @@
                  </a>
              </li>
          @endcan
+         <li>
+             <a href="{{ route('master.value-posts.list') }}">
+                 <div class="parent-icon"><ion-icon name="megaphone-outline"></ion-icon>
+                 </div>
+                 <div class="menu-title">Value Post</div>
+             </a>
+         </li>
          @can('messages list')
              <li>
                  <a class="has-arrow" href="javascript:;">

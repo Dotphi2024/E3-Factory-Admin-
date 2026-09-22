@@ -5,13 +5,16 @@
             <div class="card">
                 <div class="card-body">
                     <h6 class="mb-0 text-uppercase">Coaches List</h6>
-                    @can('batch add')
-                        <a href="{{ route('master.coaches.add') }}">
-                            <div class="col"style="float: right">
-                                <button type="button" class="btn btn-primary px-5">Add New Coach</button>
-                            </div>
+                    <div style="float: right;" class="d-flex gap-2">
+                        <a href="{{ route('master.coaches.export') }}" class="btn btn-success px-4">
+                            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export Coaches CSV
                         </a>
-                    @endcan
+                        @can('batch add')
+                            <a href="{{ route('master.coaches.add') }}">
+                                <button type="button" class="btn btn-primary px-4">Add New Coach</button>
+                            </a>
+                        @endcan
+                    </div>
                     <br><br>
                     <hr>
                     <div class="table-responsive">

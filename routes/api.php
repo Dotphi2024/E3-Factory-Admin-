@@ -123,6 +123,14 @@ Route::middleware(['verify_auth_token'])->group(function () {
     Route::post('addRatingCoachToParticipant', [ApiController::class, 'addRatingCoachToParticipant']);
     // Route::get('getAssignmentsBySession', [ApiController::class, 'getAssignmentsBySession']);
     // Route::post('startOrStopAssignment', [ApiController::class, 'startOrStopAssignment']);
+
+    // Assignment & Fee Details & Group Management APIs
+    Route::post('getMemberAssignmentReport', [ApiController::class, 'getMemberAssignmentReport']);
+    Route::post('getParticipantFeeDetails', [ApiController::class, 'getParticipantFeeDetails']);
+    Route::post('manageCoachGroupMembers', [ApiController::class, 'manageCoachGroupMembers']);
+    Route::post('getCoachBatchMembersForGroup', [ApiController::class, 'manageCoachGroupMembers']);
+    Route::post('addMembersToGroup', [ApiController::class, 'manageCoachGroupMembers']);
+    Route::post('removeMemberFromGroup', [ApiController::class, 'removeMemberFromGroup']);
     // /*----------------------------End Coach Apis---------------------------*/
 
     // Get Batch Home Page Content

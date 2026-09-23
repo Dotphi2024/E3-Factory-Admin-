@@ -2238,20 +2238,9 @@ class ApiController extends Controller
 
     public function getMemberAssignmentReport(Request $request)
     {
-        $tokenParticipant = $request->participant;
-        if (!$tokenParticipant) {
-            $tokenStr = null;
-            if ($request->hasHeader('Authorization') && preg_match('/Bearer\s(\S+)/', $request->header('Authorization'), $matches)) {
-                $tokenStr = $matches[1];
-            } else {
-                $tokenStr = $request->input('_auth') ?? $request->input('token') ?? $request->input('auth_token');
-            }
-            if ($tokenStr) {
-                $tokenParticipant = Participant::where('token', trim((string) $tokenStr))->first();
-            }
-        }
+        $participant = $request->participant;
+        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($participant ? $participant->id : null);
 
-        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($tokenParticipant ? $tokenParticipant->id : null);
         if ($selected_participant_id) {
             $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
         }
@@ -2461,20 +2450,9 @@ class ApiController extends Controller
 
     public function getParticipantFeeDetails(Request $request)
     {
-        $tokenParticipant = $request->participant;
-        if (!$tokenParticipant) {
-            $tokenStr = null;
-            if ($request->hasHeader('Authorization') && preg_match('/Bearer\s(\S+)/', $request->header('Authorization'), $matches)) {
-                $tokenStr = $matches[1];
-            } else {
-                $tokenStr = $request->input('_auth') ?? $request->input('token') ?? $request->input('auth_token');
-            }
-            if ($tokenStr) {
-                $tokenParticipant = Participant::where('token', trim((string) $tokenStr))->first();
-            }
-        }
+        $participantObj = $request->participant;
+        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($participantObj ? $participantObj->id : null);
 
-        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($tokenParticipant ? $tokenParticipant->id : null);
         if ($selected_participant_id) {
             $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
         }
@@ -2609,16 +2587,9 @@ class ApiController extends Controller
 
     public function manageCoachGroupMembers(Request $request)
     {
-        $tokenParticipant = $request->participant;
-        if (!$tokenParticipant && $request->hasHeader('Authorization')) {
-            $authHeader = $request->header('Authorization');
-            if (preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-                $tokenParticipant = Participant::where('token', $matches[1])->first();
-            }
-        }
-
-        if (!$request->has('coach_id') && $tokenParticipant) {
-            $request->merge(['coach_id' => $tokenParticipant->id]);
+        $coach = $request->participant;
+        if ($coach && !$request->has('coach_id')) {
+            $request->merge(['coach_id' => $coach->id]);
         }
 
         $validator = \Validator::make($request->all(), [
@@ -2771,15 +2742,8 @@ class ApiController extends Controller
 
     public function removeMemberFromGroup(Request $request)
     {
-        $tokenParticipant = $request->participant;
-        if (!$tokenParticipant && $request->hasHeader('Authorization')) {
-            $authHeader = $request->header('Authorization');
-            if (preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-                $tokenParticipant = Participant::where('token', $matches[1])->first();
-            }
-        }
-
-        $selectedParticipantId = $request->member_id ?? $request->participant_id ?? ($tokenParticipant ? $tokenParticipant->id : null);
+        $participantObj = $request->participant;
+        $selectedParticipantId = $request->member_id ?? $request->participant_id ?? ($participantObj ? $participantObj->id : null);
 
         $validator = \Validator::make($request->all(), [
             'batch_group_id' => 'required|numeric',

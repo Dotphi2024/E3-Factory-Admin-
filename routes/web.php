@@ -24,6 +24,14 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// Run live database migrations via browser
+Route::get('/run-live-migrations', function () {
+    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+    \Illuminate\Support\Facades\Artisan::call('config:clear');
+    \Illuminate\Support\Facades\Artisan::call('cache:clear');
+    return '<h2>Migrations & Cache Clear Executed Successfully!</h2><pre>' . \Illuminate\Support\Facades\Artisan::output() . '</pre>';
+});
+
 // Auth Routes
 Route::get('/login', function () {
     return view('login');

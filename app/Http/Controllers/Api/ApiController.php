@@ -24,6 +24,8 @@ use App\Models\BatchSchedule;
 use App\Models\Meeting;
 use App\Models\MeetingAttendance;
 use App\Models\Assignment;
+use App\Models\AssignmentOption;
+use App\Models\AssignmentSubmission;
 use App\Models\ParticipantSessionRating;
 use Illuminate\Support\Facades\DB;
 use App\Http\Resources\ParticipantResource;
@@ -716,7 +718,7 @@ class ApiController extends Controller
             ]);
         }
 
-        $batch_group = BatchGroup::find($request->batch_group_id)->where('coach_id', $participant->id)->first();
+        $batch_group = BatchGroup::where('id', $request->batch_group_id)->where('coach_id', $participant->id)->first();
         if(!$batch_group){
             return response()->json([
                 'success' => false,
@@ -2232,5 +2234,532 @@ class ApiController extends Controller
                 'message' => 'You are not a coach'
             ]));
         }
+    }
+
+    public function getMemberAssignmentReport(Request $request)
+    {
+        $selected_participant_id = $request->member_id ?? $request->participant_id;
+
+        $validator = \Validator::make($request->all(), [
+            'batch_id' => 'required_without_all:member_id,participant_id|nullable|numeric',
+            'group_id' => 'nullable|numeric',
+            'schedule_id' => 'nullable|numeric',
+            'participant_id' => 'nullable|numeric',
+            'member_id' => 'nullable|numeric',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first()
+            ], 422);
+        }
+
+        $batchId = $request->batch_id;
+        if (!$batchId && $selected_participant_id) {
+            $p = Participant::with('participantBatches')->find($selected_participant_id);
+            if (!$p) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member / Participant not found with ID: ' . $selected_participant_id
+                ], 404);
+            }
+            $batchId = $p->batch_id;
+            if (!$batchId && $p->participantBatches->count() > 0) {
+                $batchId = $p->participantBatches->first()->id;
+            }
+            if (!$batchId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No batch assigned to member with ID: ' . $selected_participant_id
+                ], 404);
+            }
+        }
+
+        $batch = Batch::with(['schedules.assignments.options', 'groups.batchGroupParticipants', 'course'])->find($batchId);
+
+        if (!$batch) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Batch not found'
+            ], 404);
+        }
+
+        $selected_group_id = $request->group_id;
+        $selected_schedule_id = $request->schedule_id;
+
+        if ($selected_participant_id) {
+            $participants = Participant::where('id', $selected_participant_id)->get();
+        } elseif ($selected_group_id) {
+            $groupParticipantIds = BatchGroupParticipant::where('batch_group_id', $selected_group_id)->pluck('participant_id')->toArray();
+            $participants = Participant::whereIn('id', $groupParticipantIds)->orderBy('first_name', 'ASC')->get();
+        } else {
+            $participants = $batch->batchParticipants()->orderBy('first_name', 'ASC')->get();
+        }
+
+        $schedules = $batch->schedules;
+        $activeSchedules = $selected_schedule_id 
+            ? $schedules->where('id', $selected_schedule_id) 
+            : $schedules;
+
+        $assignmentsList = collect();
+        foreach ($activeSchedules as $sch) {
+            foreach ($sch->assignments as $asgn) {
+                $assignmentsList->push($asgn);
+            }
+        }
+
+        $assignmentIds = $assignmentsList->pluck('id')->toArray();
+        $participantIds = $participants->pluck('id')->toArray();
+
+        $submissions = AssignmentSubmission::with(['assignmentOption'])
+            ->whereIn('assignment_id', $assignmentIds)
+            ->whereIn('participant_id', $participantIds)
+            ->get()
+            ->groupBy(function ($item) {
+                return $item->participant_id . '_' . $item->assignment_id;
+            });
+
+        $participantGroupMap = [];
+        foreach ($batch->groups as $group) {
+            foreach ($group->batchGroupParticipants as $bgp) {
+                $participantGroupMap[$bgp->participant_id] = $group->group_name;
+            }
+        }
+
+        $membersReport = [];
+        $totalSubmissionsCount = 0;
+
+        foreach ($participants as $participant) {
+            $submittedCount = 0;
+            $pendingCount = 0;
+            $totalMarksObtained = 0;
+            $totalMaxMarks = 0;
+            $assignmentsData = [];
+
+            foreach ($assignmentsList as $assignment) {
+                $key = $participant->id . '_' . $assignment->id;
+                $submission = $submissions->get($key)?->first();
+
+                $maxMark = 0;
+                if ($assignment->option_type == 'options') {
+                    $maxMark = (float) $assignment->options->max('mark');
+                }
+                $totalMaxMarks += $maxMark;
+
+                if ($submission) {
+                    $submittedCount++;
+                    $totalSubmissionsCount++;
+                    $markObtained = 0;
+                    if ($assignment->option_type == 'options' && $submission->assignmentOption) {
+                        $markObtained = (float) $submission->assignmentOption->mark;
+                    } else {
+                        $markObtained = (float) ($submission->mark ?? 0);
+                    }
+                    $totalMarksObtained += $markObtained;
+
+                    $assignmentsData[] = [
+                        'assignment_id' => $assignment->id,
+                        'question' => $assignment->question,
+                        'option_type' => $assignment->option_type,
+                        'session_id' => $assignment->batch_schedule_id,
+                        'session_name' => $assignment->batchSchedule?->name,
+                        'status' => 'Submitted',
+                        'mark_obtained' => $markObtained,
+                        'max_mark' => $maxMark,
+                        'answer' => $submission->answer,
+                        'selected_option' => $submission->assignmentOption?->option,
+                        'file_url' => $submission->file ? asset('uploads/participants/assignment/' . $submission->file) : null,
+                        'submitted_at' => $submission->created_at ? $submission->created_at->format('Y-m-d H:i:s') : null,
+                    ];
+                } else {
+                    $pendingCount++;
+                    $assignmentsData[] = [
+                        'assignment_id' => $assignment->id,
+                        'question' => $assignment->question,
+                        'option_type' => $assignment->option_type,
+                        'session_id' => $assignment->batch_schedule_id,
+                        'session_name' => $assignment->batchSchedule?->name,
+                        'status' => 'Pending',
+                        'mark_obtained' => 0,
+                        'max_mark' => $maxMark,
+                        'answer' => null,
+                        'selected_option' => null,
+                        'file_url' => null,
+                        'submitted_at' => null,
+                    ];
+                }
+            }
+
+            $percentage = $totalMaxMarks > 0 ? round(($totalMarksObtained / $totalMaxMarks) * 100, 1) : 0;
+
+            $membersReport[] = [
+                'participant_id' => $participant->id,
+                'first_name' => $participant->first_name,
+                'last_name' => $participant->last_name,
+                'full_name' => trim($participant->first_name . ' ' . $participant->last_name),
+                'mobile' => $participant->mobile,
+                'group_name' => $participantGroupMap[$participant->id] ?? 'Unassigned',
+                'submitted_count' => $submittedCount,
+                'pending_count' => $pendingCount,
+                'total_assignments' => count($assignmentsList),
+                'total_marks_obtained' => $totalMarksObtained,
+                'total_max_marks' => $totalMaxMarks,
+                'percentage' => $percentage,
+                'assignments' => $assignmentsData,
+            ];
+        }
+
+        $totalAssignmentsPossible = count($participants) * count($assignmentsList);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Member assignment report retrieved successfully',
+            'data' => [
+                'batch_info' => [
+                    'id' => $batch->id,
+                    'name' => $batch->name,
+                    'program_name' => $batch->course?->name,
+                    'number_of_sessions' => $batch->number_of_sessions,
+                ],
+                'summary' => [
+                    'total_members' => count($membersReport),
+                    'total_assignments' => count($assignmentsList),
+                    'total_submissions_count' => $totalSubmissionsCount,
+                    'total_assignments_possible' => $totalAssignmentsPossible,
+                    'overall_submission_rate' => $totalAssignmentsPossible > 0 ? round(($totalSubmissionsCount / $totalAssignmentsPossible) * 100, 1) : 0,
+                ],
+                'assignments' => $assignmentsList->map(function ($asgn) {
+                    return [
+                        'id' => $asgn->id,
+                        'question' => $asgn->question,
+                        'option_type' => $asgn->option_type,
+                        'session_id' => $asgn->batch_schedule_id,
+                        'session_name' => $asgn->batchSchedule?->name,
+                    ];
+                }),
+                'members_report' => $membersReport,
+            ]
+        ]);
+    }
+
+    public function getParticipantFeeDetails(Request $request)
+    {
+        $selected_participant_id = $request->member_id ?? $request->participant_id;
+
+        if (!$selected_participant_id && isset($request->participant)) {
+            $selected_participant_id = $request->participant->id;
+        }
+
+        if (!$selected_participant_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide member_id or participant_id parameter'
+            ], 422);
+        }
+
+        $participant = Participant::with(['batch.schedules', 'participantBatches', 'payments.batch'])
+            ->find($selected_participant_id);
+
+        if (!$participant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Member / Participant not found with ID: ' . $selected_participant_id
+            ], 404);
+        }
+
+        $batch = $participant->batch;
+        if (!$batch && $participant->participantBatches->count() > 0) {
+            $batch = $participant->participantBatches->first();
+        }
+
+        $payments = $participant->payments;
+        $registrationPayment = $payments->where('payment_for', 'registration')->first();
+
+        $schedules = $batch ? $batch->schedules->sortBy('session_number') : collect();
+        $sessionBreakdown = [];
+        $totalSessionsFeeDue = 0;
+        $totalSessionsFeePaid = 0;
+
+        foreach ($schedules as $schedule) {
+            $sessionPayment = $payments->where('payment_for', 'session_fee')
+                ->where('session_number', $schedule->session_number)
+                ->first();
+
+            $feeAmount = (float) ($schedule->amount > 0 ? $schedule->amount : ($batch ? $batch->fee_per_session : 0));
+            $isPaid = $sessionPayment ? true : false;
+
+            if ($isPaid) {
+                $totalSessionsFeePaid += $feeAmount;
+            } else {
+                $totalSessionsFeeDue += $feeAmount;
+            }
+
+            $sessionBreakdown[] = [
+                'session_id' => $schedule->id,
+                'session_number' => $schedule->session_number,
+                'session_name' => $schedule->name,
+                'session_date' => $schedule->date,
+                'amount' => $feeAmount,
+                'status' => $isPaid ? 'Paid' : 'Pending',
+                'is_paid' => $isPaid,
+                'payment_link_active' => (bool) $schedule->payment_link_status,
+                'is_session_completed' => $schedule->is_session_completed,
+                'payment_details' => $sessionPayment ? [
+                    'payment_id' => $sessionPayment->id,
+                    'transaction_id' => $sessionPayment->transaction_id,
+                    'amount' => (float) $sessionPayment->amount,
+                    'payment_mode' => $sessionPayment->payment_mode,
+                    'payment_image_url' => $sessionPayment->payment_image ? asset('uploads/participant-payment/' . $sessionPayment->payment_image) : null,
+                    'qr_code_url' => $sessionPayment->qr_code_file ? asset('uploads/participant-payment/qrcode/' . $sessionPayment->qr_code_file) : null,
+                    'is_qr_used' => (bool) $sessionPayment->is_qr_used,
+                    'paid_at' => $sessionPayment->created_at ? $sessionPayment->created_at->format('Y-m-d H:i:s') : null,
+                ] : null,
+            ];
+        }
+
+        $paymentHistory = $payments->map(function ($p) {
+            return [
+                'payment_id' => $p->id,
+                'batch_id' => $p->batch_id,
+                'batch_name' => $p->batch?->name,
+                'payment_for' => $p->payment_for,
+                'session_number' => $p->session_number,
+                'amount' => (float) $p->amount,
+                'payment_mode' => $p->payment_mode,
+                'transaction_id' => $p->transaction_id,
+                'payment_image_url' => $p->payment_image ? asset('uploads/participant-payment/' . $p->payment_image) : null,
+                'qr_code_url' => $p->qr_code_file ? asset('uploads/participant-payment/qrcode/' . $p->qr_code_file) : null,
+                'created_at' => $p->created_at ? $p->created_at->format('Y-m-d H:i:s') : null,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Participant fee and pending details fetched successfully',
+            'data' => [
+                'member_info' => [
+                    'participant_id' => $participant->id,
+                    'first_name' => $participant->first_name,
+                    'last_name' => $participant->last_name,
+                    'full_name' => trim($participant->first_name . ' ' . $participant->last_name),
+                    'mobile' => $participant->mobile,
+                    'email' => $participant->email,
+                    'city' => $participant->city,
+                ],
+                'batch_info' => $batch ? [
+                    'id' => $batch->id,
+                    'name' => $batch->name,
+                    'registration_fee' => (float) $batch->registration_fee,
+                    'fee_per_session' => (float) $batch->fee_per_session,
+                    'number_of_sessions' => $batch->number_of_sessions,
+                ] : null,
+                'financial_summary' => [
+                    'total_amount' => (float) $participant->total_amount,
+                    'paid_amount' => (float) $participant->paid_amount,
+                    'due_amount' => (float) $participant->due_amount,
+                    'is_registration_fees_paid' => (bool) $participant->is_registration_fees_paid,
+                    'registration_fee_status' => $participant->is_registration_fees_paid ? 'Paid' : 'Pending',
+                    'registration_fee_amount' => $batch ? (float) $batch->registration_fee : 0,
+                    'total_sessions_count' => count($schedules),
+                    'total_sessions_fee_paid' => $totalSessionsFeePaid,
+                    'total_sessions_fee_due' => $totalSessionsFeeDue,
+                ],
+                'registration_payment_details' => $registrationPayment ? [
+                    'payment_id' => $registrationPayment->id,
+                    'amount' => (float) $registrationPayment->amount,
+                    'payment_mode' => $registrationPayment->payment_mode,
+                    'transaction_id' => $registrationPayment->transaction_id,
+                    'payment_image_url' => $registrationPayment->payment_image ? asset('uploads/participant-payment/' . $registrationPayment->payment_image) : null,
+                    'paid_at' => $registrationPayment->created_at ? $registrationPayment->created_at->format('Y-m-d H:i:s') : null,
+                ] : null,
+                'session_fee_breakdown' => $sessionBreakdown,
+                'payment_history' => $paymentHistory,
+            ]
+        ]);
+    }
+
+    public function manageCoachGroupMembers(Request $request)
+    {
+        $validator = \Validator::make($request->all(), [
+            'batch_id' => 'required_without:batch_group_id|nullable|numeric',
+            'batch_group_id' => 'required_without:batch_id|nullable|numeric',
+            'coach_id' => 'nullable|numeric',
+            'member_ids' => 'nullable',
+            'participant_ids' => 'nullable',
+            'member_id' => 'nullable',
+            'participant_id' => 'nullable',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first()
+            ], 422);
+        }
+
+        $batchGroupId = $request->batch_group_id;
+        $batchGroup = $batchGroupId ? BatchGroup::find($batchGroupId) : null;
+        $batchId = $request->batch_id ?? ($batchGroup ? $batchGroup->batch_id : null);
+
+        $batch = Batch::with(['groups.batchGroupParticipants'])->find($batchId);
+        if (!$batch) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Batch not found'
+            ], 404);
+        }
+
+        $addedCount = 0;
+        $alreadyAddedCount = 0;
+        $addedMembersList = [];
+        $rawIds = $request->participant_ids ?? $request->member_ids ?? $request->participant_id ?? $request->member_id;
+
+        // Parse member IDs reliably from array, string like "[6,7]", "6,7", or single integer
+        if ($rawIds && $batchGroup) {
+            $participantIds = [];
+            if (is_array($rawIds)) {
+                foreach ($rawIds as $item) {
+                    if (is_numeric($item)) {
+                        $participantIds[] = (int) $item;
+                    }
+                }
+            } elseif (is_string($rawIds) || is_numeric($rawIds)) {
+                preg_match_all('/\d+/', (string) $rawIds, $matches);
+                if (!empty($matches[0])) {
+                    $participantIds = array_map('intval', $matches[0]);
+                }
+            }
+
+            foreach ($participantIds as $pId) {
+                if ($pId <= 0) continue;
+
+                $pObj = Participant::find($pId);
+                if (!$pObj) continue;
+
+                $exists = BatchGroupParticipant::where('batch_group_id', $batchGroup->id)
+                    ->where('participant_id', $pId)
+                    ->first();
+
+                if (!$exists) {
+                    $bgp = new BatchGroupParticipant();
+                    $bgp->batch_id = $batch->id;
+                    $bgp->batch_group_id = $batchGroup->id;
+                    $bgp->participant_id = $pId;
+                    $bgp->added_by = 0;
+                    $bgp->save();
+                    $addedCount++;
+                    $addedMembersList[] = [
+                        'participant_id' => $pObj->id,
+                        'full_name' => trim($pObj->first_name . ' ' . $pObj->last_name),
+                        'mobile' => $pObj->mobile,
+                        'status' => 'Newly Added',
+                    ];
+                } else {
+                    $alreadyAddedCount++;
+                    $addedMembersList[] = [
+                        'participant_id' => $pObj->id,
+                        'full_name' => trim($pObj->first_name . ' ' . $pObj->last_name),
+                        'mobile' => $pObj->mobile,
+                        'status' => 'Already in Group',
+                    ];
+                }
+            }
+
+            $batch->load(['groups.batchGroupParticipants']);
+        }
+
+        $participants = $batch->batchParticipants()->orderBy('first_name', 'ASC')->get();
+        $groupParticipantMap = [];
+        foreach ($batch->groups as $group) {
+            $gName = $group->name ?? $group->group_name ?? 'Group #' . $group->id;
+            foreach ($group->batchGroupParticipants as $bgp) {
+                $groupParticipantMap[$bgp->participant_id] = [
+                    'group_id' => $group->id,
+                    'group_name' => $gName,
+                ];
+            }
+        }
+
+        $members = $participants->map(function ($p) use ($groupParticipantMap, $batchGroupId) {
+            $groupInfo = $groupParticipantMap[$p->id] ?? null;
+            $isInAnyGroup = $groupInfo ? true : false;
+            $isInSelectedGroup = ($groupInfo && $batchGroupId && $groupInfo['group_id'] == $batchGroupId);
+
+            return [
+                'participant_id' => $p->id,
+                'first_name' => $p->first_name,
+                'last_name' => $p->last_name,
+                'full_name' => trim($p->first_name . ' ' . $p->last_name),
+                'mobile' => $p->mobile,
+                'email' => $p->email,
+                'city' => $p->city,
+                'is_in_any_group' => $isInAnyGroup,
+                'current_group_id' => $groupInfo ? $groupInfo['group_id'] : null,
+                'current_group_name' => $groupInfo ? $groupInfo['group_name'] : 'Unassigned',
+                'is_in_selected_group' => $isInSelectedGroup,
+            ];
+        });
+
+        $targetGroupName = $batchGroup ? ($batchGroup->name ?? $batchGroup->group_name ?? 'Group #' . $batchGroup->id) : null;
+
+        $message = $addedCount > 0 
+            ? "Successfully added {$addedCount} member(s) to group '{$targetGroupName}'" 
+            : 'Batch members fetched successfully for group selection';
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => [
+                'batch_info' => [
+                    'id' => $batch->id,
+                    'name' => $batch->name,
+                ],
+                'selected_group' => $batchGroup ? [
+                    'id' => $batchGroup->id,
+                    'name' => $targetGroupName,
+                ] : null,
+                'added_count' => $addedCount,
+                'already_added_count' => $alreadyAddedCount,
+                'added_members' => $addedMembersList,
+                'total_members' => count($members),
+                'unassigned_members_count' => $members->where('is_in_any_group', false)->count(),
+                'members' => $members->values(),
+            ]
+        ]);
+    }
+
+    public function removeMemberFromGroup(Request $request)
+    {
+        $selectedParticipantId = $request->member_id ?? $request->participant_id;
+
+        $validator = \Validator::make($request->all(), [
+            'batch_group_id' => 'required|numeric',
+            'participant_id' => 'nullable|numeric',
+            'member_id' => 'nullable|numeric',
+        ]);
+
+        if ($validator->fails() || !$selectedParticipantId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide batch_group_id and member_id / participant_id'
+            ], 422);
+        }
+
+        $deleted = BatchGroupParticipant::where('batch_group_id', $request->batch_group_id)
+            ->where('participant_id', $selectedParticipantId)
+            ->delete();
+
+        if ($deleted) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Member removed from group successfully'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Member was not in this group'
+        ], 404);
     }
 }

@@ -19,11 +19,8 @@
                     data-bs-toggle="dropdown"> <span class="visually-hidden">Toggle Dropdown</span>
                 </button>
                 <div class="dropdown-menu dropdown-menu-right dropdown-menu-lg-end">
-                    {{-- <a class="dropdown-item"
-                        href="javascript:;">Action</a> --}}
+                    <a class="dropdown-item" href="{{ route('master.batches.assignment-report', $batch->id) }}">Member Assignment Report</a>
                     <a class="dropdown-item" href="{{ route('master.batches.edit', $batch->id) }}">Edit</a>
-                    {{-- <a class="dropdown-item" href="javascript:;">Something else here</a>
-                    <div class="dropdown-divider"></div> <a class="dropdown-item" href="javascript:;">Separated link</a> --}}
                 </div>
             </div>
         </div>
@@ -36,9 +33,14 @@
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                         <h4 class="mb-0">Participants</h4>
-                        <button type="button" id="exportBatchPendingFeesBtn" class="btn btn-outline-danger btn-sm px-3">
-                            <i class="bi bi-file-earmark-arrow-down-fill me-1"></i> Export Pending Fees CSV
-                        </button>
+                        <div class="d-flex gap-2">
+                            <a href="{{ route('master.batches.assignment-report', $batch->id) }}" class="btn btn-primary btn-sm px-3">
+                                <i class="bi bi-journal-check me-1"></i> Member Assignment Report
+                            </a>
+                            <button type="button" id="exportBatchPendingFeesBtn" class="btn btn-outline-danger btn-sm px-3">
+                                <i class="bi bi-file-earmark-arrow-down-fill me-1"></i> Export Pending Fees CSV
+                            </button>
+                        </div>
                     </div>
                     <div class="table-responsive">
                         <table id="example" class="table table-striped table-bordered" style="width:100%">

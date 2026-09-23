@@ -10,6 +10,7 @@ use App\Models\BatchGroup;
 use App\Models\BatchSchedule;
 use App\Models\Assignment;
 use App\Models\AssignmentOption;
+use App\Models\AssignmentSubmission;
 use App\Models\BatchGroupParticipant;
 use App\Models\Participant;
 use App\Models\Course;
@@ -670,5 +671,183 @@ class BatchController extends Controller
             Log::error("Failed to send WhatsApp session reminder to {$mobile}: " . $e->getMessage());
             return false;
         }
+    }
+
+    public function assignment_report($id, Request $request)
+    {
+        $batch = Batch::with(['schedules.assignments.options', 'groups.batchGroupParticipants.participant'])->findOrFail($id);
+        
+        $selected_group_id = $request->get('group_id');
+        $selected_schedule_id = $request->get('schedule_id');
+
+        $groups = $batch->groups;
+        $schedules = $batch->schedules;
+
+        if ($selected_group_id) {
+            $groupParticipantIds = BatchGroupParticipant::where('batch_group_id', $selected_group_id)->pluck('participant_id')->toArray();
+            $participants = Participant::whereIn('id', $groupParticipantIds)->orderBy('first_name', 'ASC')->get();
+        } else {
+            $participants = $batch->batchParticipants()->orderBy('first_name', 'ASC')->get();
+        }
+
+        $activeSchedules = $selected_schedule_id 
+            ? $schedules->where('id', $selected_schedule_id) 
+            : $schedules;
+
+        $assignmentsList = collect();
+        foreach ($activeSchedules as $sch) {
+            foreach ($sch->assignments as $asgn) {
+                $assignmentsList->push($asgn);
+            }
+        }
+
+        $assignmentIds = $assignmentsList->pluck('id')->toArray();
+        $participantIds = $participants->pluck('id')->toArray();
+
+        $submissions = AssignmentSubmission::with(['assignmentOption'])
+            ->whereIn('assignment_id', $assignmentIds)
+            ->whereIn('participant_id', $participantIds)
+            ->get()
+            ->groupBy(function ($item) {
+                return $item->participant_id . '_' . $item->assignment_id;
+            });
+
+        $participantGroupMap = [];
+        foreach ($batch->groups as $group) {
+            foreach ($group->batchGroupParticipants as $bgp) {
+                $participantGroupMap[$bgp->participant_id] = $group->group_name;
+            }
+        }
+
+        $reportData = [];
+        $totalSubmissionsCount = 0;
+
+        foreach ($participants as $participant) {
+            $submittedCount = 0;
+            $pendingCount = 0;
+            $totalMarksObtained = 0;
+            $totalMaxMarks = 0;
+            $assignmentDetails = [];
+
+            foreach ($assignmentsList as $assignment) {
+                $key = $participant->id . '_' . $assignment->id;
+                $submission = $submissions->get($key)?->first();
+
+                $maxMark = 0;
+                if ($assignment->option_type == 'options') {
+                    $maxMark = (float) $assignment->options->max('mark');
+                }
+
+                $totalMaxMarks += $maxMark;
+
+                if ($submission) {
+                    $submittedCount++;
+                    $totalSubmissionsCount++;
+                    $markObtained = 0;
+                    if ($assignment->option_type == 'options' && $submission->assignmentOption) {
+                        $markObtained = (float) $submission->assignmentOption->mark;
+                    } else {
+                        $markObtained = (float) ($submission->mark ?? 0);
+                    }
+                    $totalMarksObtained += $markObtained;
+
+                    $assignmentDetails[$assignment->id] = [
+                        'status' => 'Submitted',
+                        'mark' => $markObtained,
+                        'max_mark' => $maxMark,
+                        'answer' => $submission->answer,
+                        'option' => $submission->assignmentOption?->option,
+                        'file' => $submission->file,
+                        'submitted_at' => $submission->created_at ? $submission->created_at->format('d-m-Y H:i') : null,
+                    ];
+                } else {
+                    $pendingCount++;
+                    $assignmentDetails[$assignment->id] = [
+                        'status' => 'Pending',
+                        'mark' => 0,
+                        'max_mark' => $maxMark,
+                        'answer' => null,
+                        'option' => null,
+                        'file' => null,
+                        'submitted_at' => null,
+                    ];
+                }
+            }
+
+            $percentage = $totalMaxMarks > 0 ? round(($totalMarksObtained / $totalMaxMarks) * 100, 1) : 0;
+
+            $reportData[] = [
+                'participant' => $participant,
+                'group_name' => $participantGroupMap[$participant->id] ?? 'Unassigned',
+                'submitted_count' => $submittedCount,
+                'pending_count' => $pendingCount,
+                'total_assignments' => count($assignmentsList),
+                'total_marks_obtained' => $totalMarksObtained,
+                'total_max_marks' => $totalMaxMarks,
+                'percentage' => $percentage,
+                'assignments' => $assignmentDetails,
+            ];
+        }
+
+        $totalAssignmentsPossible = count($participants) * count($assignmentsList);
+
+        if ($request->get('export') == 'csv') {
+            $fileName = 'member_assignment_report_batch_' . $batch->id . '_' . date('Ymd_His') . '.csv';
+            $headers = [
+                "Content-type" => "text/csv",
+                "Content-Disposition" => "attachment; filename=$fileName",
+                "Pragma" => "no-cache",
+                "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
+                "Expires" => "0"
+            ];
+
+            $callback = function () use ($reportData, $assignmentsList) {
+                $file = fopen('php://output', 'w');
+                $row = ['No', 'Member Name', 'Mobile', 'Group', 'Submitted Count', 'Pending Count', 'Total Assignments', 'Marks Obtained', 'Max Marks', 'Percentage (%)'];
+                foreach ($assignmentsList as $asgn) {
+                    $row[] = 'Q: ' . substr($asgn->question, 0, 30) . ' (' . ($asgn->batchSchedule?->name ?? 'Session') . ')';
+                }
+                fputcsv($file, $row);
+
+                foreach ($reportData as $index => $item) {
+                    $csvRow = [
+                        $index + 1,
+                        $item['participant']->first_name . ' ' . $item['participant']->last_name,
+                        $item['participant']->mobile,
+                        $item['group_name'],
+                        $item['submitted_count'],
+                        $item['pending_count'],
+                        $item['total_assignments'],
+                        $item['total_marks_obtained'],
+                        $item['total_max_marks'],
+                        $item['percentage'] . '%',
+                    ];
+                    foreach ($assignmentsList as $asgn) {
+                        $details = $item['assignments'][$asgn->id] ?? null;
+                        if ($details && $details['status'] == 'Submitted') {
+                            $csvRow[] = 'Submitted (' . $details['mark'] . '/' . $details['max_mark'] . ' marks)';
+                        } else {
+                            $csvRow[] = 'Pending';
+                        }
+                    }
+                    fputcsv($file, $csvRow);
+                }
+                fclose($file);
+            };
+
+            return response()->stream($callback, 200, $headers);
+        }
+
+        return view('master.batch.assignment-report', compact(
+            'batch',
+            'groups',
+            'schedules',
+            'selected_group_id',
+            'selected_schedule_id',
+            'assignmentsList',
+            'reportData',
+            'totalSubmissionsCount',
+            'totalAssignmentsPossible'
+        ));
     }
 }

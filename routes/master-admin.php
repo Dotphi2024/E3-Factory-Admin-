@@ -112,6 +112,7 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
         Route::get('stop-all-session-assignment/{id}', [BatchController::class, 'stop_all_session_assignments'])->name('master.batches.stop-all-session-assignment')->middleware('permission:batch edit');
         Route::get('update-rating-start-status/{id}', [BatchController::class, 'update_rating_start_status'])->name('master.batches.update-rating-start-status')->middleware('permission:batch edit');
         Route::post('send-session-whatsapp-reminder/{id}', [BatchController::class, 'send_session_whatsapp_reminder'])->name('master.batches.send-session-whatsapp-reminder')->middleware('permission:batch edit');
+        Route::get('assignment-report/{id}', [BatchController::class, 'assignment_report'])->name('master.batches.assignment-report')->middleware('permission:batch view');
 
         // Batch Group
         Route::post('add-group/{id}', [BatchController::class, 'add_group'])->name('master.batches.add-group')->middleware('permission:batch edit');

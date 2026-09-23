@@ -16,11 +16,18 @@ class VerifyParticipantToken
      */
     public function handle(Request $request, Closure $next): Response
     {
+        $token = null;
         $authorizationHeader = $request->header('Authorization');
-        if (!$authorizationHeader || !preg_match('/Bearer\s(\S+)/', $authorizationHeader, $matches)) {
+        if ($authorizationHeader && preg_match('/Bearer\s(\S+)/', $authorizationHeader, $matches)) {
+            $token = $matches[1];
+        } else {
+            $token = $request->input('_auth') ?? $request->input('token') ?? $request->input('auth_token');
+        }
+
+        if (!$token) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
-        $token = $matches[1];
+
         $participant = Participant::with('batch')->where('token', $token)->first();
 
         if (!$participant) {

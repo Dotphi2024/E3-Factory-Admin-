@@ -2238,7 +2238,12 @@ class ApiController extends Controller
 
     public function getMemberAssignmentReport(Request $request)
     {
-        $selected_participant_id = $request->member_id ?? $request->participant_id;
+        $participant = $request->participant;
+        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($participant ? $participant->id : null);
+
+        if ($selected_participant_id) {
+            $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
+        }
 
         $validator = \Validator::make($request->all(), [
             'batch_id' => 'required_without_all:member_id,participant_id|nullable|numeric',
@@ -2445,10 +2450,11 @@ class ApiController extends Controller
 
     public function getParticipantFeeDetails(Request $request)
     {
-        $selected_participant_id = $request->member_id ?? $request->participant_id;
+        $participantObj = $request->participant;
+        $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($participantObj ? $participantObj->id : null);
 
-        if (!$selected_participant_id && isset($request->participant)) {
-            $selected_participant_id = $request->participant->id;
+        if ($selected_participant_id) {
+            $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
         }
 
         if (!$selected_participant_id) {
@@ -2581,6 +2587,11 @@ class ApiController extends Controller
 
     public function manageCoachGroupMembers(Request $request)
     {
+        $coach = $request->participant;
+        if ($coach && !$request->has('coach_id')) {
+            $request->merge(['coach_id' => $coach->id]);
+        }
+
         $validator = \Validator::make($request->all(), [
             'batch_id' => 'required_without:batch_group_id|nullable|numeric',
             'batch_group_id' => 'required_without:batch_id|nullable|numeric',
@@ -2731,7 +2742,8 @@ class ApiController extends Controller
 
     public function removeMemberFromGroup(Request $request)
     {
-        $selectedParticipantId = $request->member_id ?? $request->participant_id;
+        $participantObj = $request->participant;
+        $selectedParticipantId = $request->member_id ?? $request->participant_id ?? ($participantObj ? $participantObj->id : null);
 
         $validator = \Validator::make($request->all(), [
             'batch_group_id' => 'required|numeric',

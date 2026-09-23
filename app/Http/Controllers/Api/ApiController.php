@@ -2239,14 +2239,22 @@ class ApiController extends Controller
     public function getMemberAssignmentReport(Request $request)
     {
         $tokenParticipant = $request->participant;
-        if (!$tokenParticipant && $request->hasHeader('Authorization')) {
-            $authHeader = $request->header('Authorization');
-            if (preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-                $tokenParticipant = Participant::where('token', $matches[1])->first();
+        if (!$tokenParticipant) {
+            $tokenStr = null;
+            if ($request->hasHeader('Authorization') && preg_match('/Bearer\s(\S+)/', $request->header('Authorization'), $matches)) {
+                $tokenStr = $matches[1];
+            } else {
+                $tokenStr = $request->input('_auth') ?? $request->input('token') ?? $request->input('auth_token');
+            }
+            if ($tokenStr) {
+                $tokenParticipant = Participant::where('token', trim((string) $tokenStr))->first();
             }
         }
 
         $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($tokenParticipant ? $tokenParticipant->id : null);
+        if ($selected_participant_id) {
+            $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
+        }
 
         $validator = \Validator::make($request->all(), [
             'batch_id' => 'required_without_all:member_id,participant_id|nullable|numeric',
@@ -2454,14 +2462,22 @@ class ApiController extends Controller
     public function getParticipantFeeDetails(Request $request)
     {
         $tokenParticipant = $request->participant;
-        if (!$tokenParticipant && $request->hasHeader('Authorization')) {
-            $authHeader = $request->header('Authorization');
-            if (preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-                $tokenParticipant = Participant::where('token', $matches[1])->first();
+        if (!$tokenParticipant) {
+            $tokenStr = null;
+            if ($request->hasHeader('Authorization') && preg_match('/Bearer\s(\S+)/', $request->header('Authorization'), $matches)) {
+                $tokenStr = $matches[1];
+            } else {
+                $tokenStr = $request->input('_auth') ?? $request->input('token') ?? $request->input('auth_token');
+            }
+            if ($tokenStr) {
+                $tokenParticipant = Participant::where('token', trim((string) $tokenStr))->first();
             }
         }
 
         $selected_participant_id = $request->member_id ?? $request->participant_id ?? ($tokenParticipant ? $tokenParticipant->id : null);
+        if ($selected_participant_id) {
+            $request->merge(['member_id' => $selected_participant_id, 'participant_id' => $selected_participant_id]);
+        }
 
         if (!$selected_participant_id) {
             return response()->json([

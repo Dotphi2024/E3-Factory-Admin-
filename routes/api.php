@@ -86,6 +86,8 @@ Route::middleware(['verify_auth_token'])->group(function () {
 
     // /*----------------------------Coach Apis ---------------------------*/
     // Get Groups of Coach
+    Route::post('createGroup', [ApiController::class, 'createGroup']);
+    Route::post('createCoachGroup', [ApiController::class, 'createGroup']);
     Route::get('getGroupsOfCoach', [ApiController::class, 'getGroupsOfCoach']);
     Route::get('getParticipantsForAddingToGroup', [ApiController::class, 'getParticipantsForAddingToGroup']);
     Route::post('addParticipantToGroup', [ApiController::class, 'addParticipantToGroup']);

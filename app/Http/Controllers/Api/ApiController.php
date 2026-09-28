@@ -646,6 +646,90 @@ class ApiController extends Controller
         ]);
     }
 
+    public function createGroup(Request $request){
+        $validator = \Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'batch_id' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        $participant = $request->participant;
+        $this->checkCoach($participant);
+
+        $batch = Batch::find($request->batch_id);
+        if(!$batch){
+            return response()->json([
+                'success' => false,
+                'message' => 'Batch not found'
+            ], 404);
+        }
+
+        // Check if the participant is a coach of this batch
+        $isCoachOfBatch = $batch->coaches()->where('participants.id', $participant->id)->exists();
+        if (!$isCoachOfBatch) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to create a group in this batch'
+            ], 403);
+        }
+
+        $batchGroup = new BatchGroup();
+        $batchGroup->name = $request->name;
+        $batchGroup->coach_id = $participant->id;
+        $batchGroup->batch_id = $batch->id;
+        $batchGroup->added_by = $participant->id;
+        $batchGroup->save();
+
+        // Optionally attach initial participant members if provided
+        $rawIds = $request->participant_ids ?? $request->member_ids;
+        if ($rawIds) {
+            $participantIds = [];
+            if (is_array($rawIds)) {
+                foreach ($rawIds as $item) {
+                    if (is_numeric($item)) {
+                        $participantIds[] = (int) $item;
+                    }
+                }
+            } elseif (is_string($rawIds) || is_numeric($rawIds)) {
+                preg_match_all('/\d+/', (string) $rawIds, $matches);
+                if (!empty($matches[0])) {
+                    $participantIds = array_map('intval', $matches[0]);
+                }
+            }
+
+            foreach ($participantIds as $pId) {
+                if ($pId <= 0) continue;
+                $exists = BatchGroupParticipant::where('batch_group_id', $batchGroup->id)
+                    ->where('participant_id', $pId)
+                    ->first();
+                if (!$exists) {
+                    $bgp = new BatchGroupParticipant();
+                    $bgp->batch_id = $batch->id;
+                    $bgp->batch_group_id = $batchGroup->id;
+                    $bgp->participant_id = $pId;
+                    $bgp->added_by = $participant->id;
+                    $bgp->save();
+                }
+            }
+        }
+
+        $batchGroup->load(['batch', 'batchGroupParticipants1']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Group created successfully',
+            'data' => [
+                'group' => $batchGroup
+            ]
+        ]);
+    }
+
     public function getGroupsOfCoach(Request $request){
         $participant = $request->participant;
         $this->checkCoach($participant);

@@ -19,9 +19,15 @@ class VerifyParticipantToken
         $token = null;
         $authorizationHeader = $request->header('Authorization');
 
-        if ($authorizationHeader && preg_match('/Bearer\s(\S+)/', $authorizationHeader, $matches)) {
-            $token = $matches[1];
-        } else {
+        if ($authorizationHeader) {
+            if (preg_match('/Bearer\s+(\S+)/i', $authorizationHeader, $matches)) {
+                $token = $matches[1];
+            } else {
+                $token = trim($authorizationHeader);
+            }
+        }
+
+        if (empty($token)) {
             $allInputs = array_merge($request->all(), $request->json() ? $request->json()->all() : []);
             $token = $allInputs['token'] ?? $allInputs['_auth'] ?? $allInputs['auth_token'] ?? null;
         }

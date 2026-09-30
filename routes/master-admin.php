@@ -149,7 +149,13 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
         Route::get('add-session-due-payment/{participant_id}/{batch_id}', [ParticipantController::class, 'add_session_due_payment'])->name('master.participants.add-session-due-payment')->middleware('permission:participant add');
         Route::post('add-session-due-payment', [ParticipantController::class, 'store_session_due_payment'])->name('master.participants.store-session-due-payment')->middleware('permission:participant add');
         Route::get('download-invoice/{payment_id}', [ParticipantController::class, 'download_invoice'])->name('master.participants.download-invoice')->middleware('permission:participant view');
+
+        // Candidate Replacements
+        Route::get('candidate-replacements', [ParticipantController::class, 'candidateReplacements'])->name('master.participants.candidate-replacements')->middleware('permission:participant list');
+        Route::post('candidate-replacements/approve/{id}', [ParticipantController::class, 'approveCandidateReplacement'])->name('master.participants.approve-candidate-replacement')->middleware('permission:participant edit');
+        Route::post('candidate-replacements/reject/{id}', [ParticipantController::class, 'rejectCandidateReplacement'])->name('master.participants.reject-candidate-replacement')->middleware('permission:participant edit');
     });
+
 
     // Coach
     Route::prefix('coaches')->group(function(){

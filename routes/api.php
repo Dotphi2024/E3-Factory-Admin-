@@ -153,6 +153,10 @@ Route::middleware(['verify_auth_token'])->group(function () {
     Route::get('getSessionsByAnswerForParticipant', [ParticipantApiController::class, 'getSessionsByAnswerForParticipant']);
     Route::get('getQuestionAndAnswerBySessionForParticipant', [ParticipantApiController::class, 'getQuestionAndAnswerBySessionForParticipant']);
     Route::get('getMeetingsForParticipant', [ParticipantApiController::class, 'getMeetingsForParticipant']);
+
+    // Candidate Replacement APIs
+    Route::post('request-candidate-replacement', [ParticipantApiController::class, 'requestCandidateReplacement']);
+    Route::get('get-candidate-replacement-status', [ParticipantApiController::class, 'getCandidateReplacementStatus']);
 });
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

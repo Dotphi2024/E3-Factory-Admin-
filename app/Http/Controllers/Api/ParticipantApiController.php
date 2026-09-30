@@ -18,13 +18,19 @@ use App\Models\AssignmentOption;
 use App\Models\AssignmentSubmission;
 use App\Models\Meeting;
 use App\Models\MeetingAttendance;
-use App\Http\Resources\ParticipantResource;;
-use Illuminate\Support\Facades\DB;
-use Endroid\QrCode\Builder\Builder;
-use Endroid\QrCode\Writer\PngWriter;
+use App\Models\CandidateReplacement;
+use App\Services\CandidateReplacementService;
+use Illuminate\Support\Facades\Validator;
 
 class ParticipantApiController extends Controller
 {
+    protected $replacementService;
+
+    public function __construct(CandidateReplacementService $replacementService)
+    {
+        $this->replacementService = $replacementService;
+    }
+
     public function getMyGroups(Request $request)
     {
         $participant = $request->participant;
@@ -720,4 +726,107 @@ class ParticipantApiController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Original participant requests a candidate replacement.
+     */
+    public function requestCandidateReplacement(Request $request)
+    {
+        $participant = $request->participant; // Derived strictly from authenticated token
+
+        $validator = Validator::make($request->all(), [
+            'candidate_first_name' => 'required|string|max:255',
+            'candidate_last_name' => 'required|string|max:255',
+            'candidate_mobile' => 'required|string|max:20',
+            'candidate_email' => 'nullable|email|max:255',
+            'candidate_address' => 'nullable|string|max:500',
+            'candidate_city' => 'nullable|string|max:100',
+            'candidate_state' => 'nullable|string|max:100',
+            'candidate_country' => 'nullable|string|max:100',
+            'candidate_birth_date' => 'nullable|date',
+            'reason' => 'required|string|min:5|max:1000',
+            'policy_accepted' => 'required|boolean|accepted',
+            'batch_id' => 'nullable|exists:batches,id',
+        ], [
+            'policy_accepted.accepted' => 'You must accept the candidate replacement policy to proceed.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->getMessageBag()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $data = $request->all();
+            if (empty($data['batch_id'])) {
+                $data['batch_id'] = $participant->batch_id;
+            }
+
+            $replacement = $this->replacementService->createRequest($participant, $data);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Your candidate replacement request has been submitted successfully and is pending review by the E3 Factory Master Admin.',
+                'data' => [
+                    'replacement_id' => $replacement->id,
+                    'status' => $replacement->status,
+                    'total_amount_transferred' => (float)$replacement->total_amount_transferred,
+                    'candidate_name' => $replacement->candidate_first_name . ' ' . $replacement->candidate_last_name,
+                    'candidate_mobile' => $replacement->candidate_mobile,
+                    'batch_id' => $replacement->batch_id,
+                    'created_at' => $replacement->created_at->format('Y-m-d H:i:s'),
+                ]
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Check the status of candidate replacement requests for the authenticated participant.
+     */
+    public function getCandidateReplacementStatus(Request $request)
+    {
+        $participant = $request->participant;
+        $batchId = $request->query('batch_id', $participant->batch_id);
+
+        $replacement = CandidateReplacement::with(['batch', 'replacementParticipant'])
+            ->where('original_participant_id', $participant->id)
+            ->where('batch_id', $batchId)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$replacement) {
+            return response()->json([
+                'success' => true,
+                'has_request' => false,
+                'message' => 'No replacement requests found for this batch.',
+                'data' => null,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'has_request' => true,
+            'data' => [
+                'id' => $replacement->id,
+                'batch_name' => $replacement->batch ? $replacement->batch->name : 'N/A',
+                'candidate_name' => $replacement->candidate_first_name . ' ' . $replacement->candidate_last_name,
+                'candidate_mobile' => $replacement->candidate_mobile,
+                'total_amount_transferred' => (float)$replacement->total_amount_transferred,
+                'status' => $replacement->status,
+                'reason' => $replacement->reason,
+                'rejection_reason' => $replacement->rejection_reason,
+                'approved_at' => $replacement->approved_at ? $replacement->approved_at->format('d-M-Y H:i') : null,
+                'created_at' => $replacement->created_at->format('d-M-Y H:i'),
+            ]
+        ]);
+    }
 }
+

@@ -11,6 +11,7 @@ class Participant extends Model
 
     protected $casts = [
         'birth_date' => 'date',
+        'is_active' => 'boolean',
     ];
 
     public function batch()
@@ -28,19 +29,42 @@ class Participant extends Model
         return $this->belongsTo(Participant::class, 'reference_detail');
     }
 
+    /**
+     * Payments where this participant is the current beneficiary.
+     */
     public function payments()
     {
-        return $this->hasMany(ParticipantPayment::class);
+        return $this->hasMany(ParticipantPayment::class, 'participant_id');
+    }
+
+    /**
+     * Payments where this participant was the original payer.
+     */
+    public function originalPayments()
+    {
+        return $this->hasMany(ParticipantPayment::class, 'original_payer_id');
+    }
+
+    public function replacementsGiven()
+    {
+        return $this->hasMany(CandidateReplacement::class, 'original_participant_id');
+    }
+
+    public function replacementsReceived()
+    {
+        return $this->hasMany(CandidateReplacement::class, 'replacement_participant_id');
     }
 
     public function scopeActive($query)
     {
         return $query->where('is_active', 1);
     }
+
     public function batches()
     {
         return $this->belongsToMany(Batch::class, 'coaches', 'participant_id', 'batch_id')->withPivot('is_head_coach','added_by','id');
     }
+
     public function batchGroupParticipants()
     {
         return $this->hasMany(BatchGroupParticipant::class);
@@ -56,8 +80,9 @@ class Participant extends Model
     }
 
     public function participantBatches(){
-        return $this->belongsToMany(Batch::class, 'participant_batches', 'participant_id', 'batch_id')->withPivot('id','is_registration_fees_paid');
+        return $this->belongsToMany(Batch::class, 'participant_batches', 'participant_id', 'batch_id')->withPivot('id','is_registration_fees_paid', 'enrollment_status', 'is_active');
     }
+
     public function meetingAttendances(){
         return $this->hasMany(MeetingAttendance::class);
     }

@@ -348,17 +348,32 @@
             <!-- Billing Grid -->
             <div class="info-grid">
                 <div>
-                    <h2 class="info-block-title">Received From (Participant)</h2>
-                    <div class="info-content">
-                        <div class="info-name">{{ $payment->participant->first_name }} {{ $payment->participant->last_name }}</div>
-                        @if($payment->participant->email)
-                            <p><strong>Email:</strong> {{ $payment->participant->email }}</p>
-                        @endif
-                        <p><strong>Mobile:</strong> {{ $payment->participant->mobile }}</p>
-                        @if($payment->participant->address || $payment->participant->city)
-                            <p><strong>Address:</strong> {{ $payment->participant->address }} {{ $payment->participant->city }} {{ $payment->participant->state }}</p>
-                        @endif
-                    </div>
+                    @if($payment->is_transferred && $payment->originalPayer && $payment->original_payer_id != $payment->participant_id)
+                        <h2 class="info-block-title">Received From (Original Payer)</h2>
+                        <div class="info-content">
+                            <div class="info-name">{{ $payment->originalPayer->first_name }} {{ $payment->originalPayer->last_name }}</div>
+                            @if($payment->originalPayer->email)
+                                <p><strong>Email:</strong> {{ $payment->originalPayer->email }}</p>
+                            @endif
+                            <p><strong>Mobile:</strong> {{ $payment->originalPayer->mobile }}</p>
+                            <div class="mt-2 p-2 bg-light rounded border small">
+                                <strong>Current Beneficiary:</strong> {{ $payment->participant->first_name }} {{ $payment->participant->last_name }}<br>
+                                <span class="text-muted">(Transferred via Candidate Replacement)</span>
+                            </div>
+                        </div>
+                    @else
+                        <h2 class="info-block-title">Received From (Participant)</h2>
+                        <div class="info-content">
+                            <div class="info-name">{{ $payment->participant->first_name }} {{ $payment->participant->last_name }}</div>
+                            @if($payment->participant->email)
+                                <p><strong>Email:</strong> {{ $payment->participant->email }}</p>
+                            @endif
+                            <p><strong>Mobile:</strong> {{ $payment->participant->mobile }}</p>
+                            @if($payment->participant->address || $payment->participant->city)
+                                <p><strong>Address:</strong> {{ $payment->participant->address }} {{ $payment->participant->city }} {{ $payment->participant->state }}</p>
+                            @endif
+                        </div>
+                    @endif
                 </div>
                 <div>
                     <h2 class="info-block-title">Payment Information</h2>
@@ -370,6 +385,9 @@
                             @if($payment->batch->course)
                                 <p><strong>Program:</strong> {{ $payment->batch->course->name }}</p>
                             @endif
+                        @endif
+                        @if($payment->is_transferred)
+                            <p class="text-primary mt-1"><strong>Status:</strong> Transferred Entitlement (Refund: ₹0.00)</p>
                         @endif
                     </div>
                 </div>

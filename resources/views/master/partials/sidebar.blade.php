@@ -143,6 +143,21 @@
                  </a>
              </li>
              <li>
+                 <a href="{{ route('master.participants.candidate-replacements') }}">
+                     <div class="parent-icon"><ion-icon name="swap-horizontal-outline"></ion-icon>
+                     </div>
+                     <div class="menu-title d-flex justify-content-between align-items-center w-100">
+                         <span>Replacements</span>
+                         @php
+                             $pendingReplacementsCount = \App\Models\CandidateReplacement::where('status', 'pending')->count();
+                         @endphp
+                         @if($pendingReplacementsCount > 0)
+                             <span class="badge bg-warning text-dark rounded-pill">{{ $pendingReplacementsCount }}</span>
+                         @endif
+                     </div>
+                 </a>
+             </li>
+             <li>
                  <a href="{{ route('master.coaches.list') }}">
                      <div class="parent-icon"><ion-icon name="accessibility-outline"></ion-icon>
                      </div>

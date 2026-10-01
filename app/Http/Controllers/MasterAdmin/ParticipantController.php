@@ -22,8 +22,18 @@ use App\Imports\ParticipantImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Http;
 
+use App\Models\CandidateReplacement;
+use App\Services\CandidateReplacementService;
+
 class ParticipantController extends Controller
 {
+    protected $replacementService;
+
+    public function __construct(CandidateReplacementService $replacementService)
+    {
+        $this->replacementService = $replacementService;
+    }
+
     public function list(){
         $participants = Participant::orderBy('id', 'desc')->get();
         return view('master.participants.list', compact('participants'));
@@ -831,7 +841,85 @@ class ParticipantController extends Controller
 
     public function download_invoice($payment_id)
     {
-        $payment = ParticipantPayment::with(['participant', 'batch'])->findOrFail($payment_id);
+        $payment = ParticipantPayment::with(['participant', 'originalPayer', 'batch', 'replacement'])->findOrFail($payment_id);
         return view('master.participants.invoice', compact('payment'));
     }
+
+    /**
+     * List all candidate replacements with tabbed statuses (pending, approved, rejected).
+     */
+    public function candidateReplacements(Request $request)
+    {
+        $status = $request->query('status', 'pending');
+
+        $query = CandidateReplacement::with([
+            'originalParticipant',
+            'replacementParticipant',
+            'batch.course',
+            'approvedByUser'
+        ]);
+
+        if (in_array($status, ['pending', 'approved', 'rejected'])) {
+            $query->where('status', $status);
+        }
+
+        $replacements = $query->orderBy('id', 'desc')->get();
+
+        $pendingCount = CandidateReplacement::where('status', 'pending')->count();
+        $approvedCount = CandidateReplacement::where('status', 'approved')->count();
+        $rejectedCount = CandidateReplacement::where('status', 'rejected')->count();
+
+        return view('master.participants.candidate-replacements', compact(
+            'replacements',
+            'status',
+            'pendingCount',
+            'approvedCount',
+            'rejectedCount'
+        ));
+    }
+
+    /**
+     * Master Admin approves a pending candidate replacement request.
+     */
+    public function approveCandidateReplacement(Request $request, $id)
+    {
+        $replacement = CandidateReplacement::findOrFail($id);
+
+        try {
+            $notes = $request->input('notes');
+            $this->replacementService->approveReplacement($replacement, Auth::user(), $notes);
+
+            return redirect()->route('master.participants.candidate-replacements', ['status' => 'approved'])
+                ->with('success', 'Candidate replacement approved and executed successfully. Entitlements have been transferred to the new candidate.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Failed to approve replacement: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Master Admin rejects a pending candidate replacement request.
+     */
+    public function rejectCandidateReplacement(Request $request, $id)
+    {
+        $validator = \Validator::make($request->all(), [
+            'rejection_reason' => 'required|string|min:3|max:1000',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()->with('error', $validator->getMessageBag()->first());
+        }
+
+        $replacement = CandidateReplacement::findOrFail($id);
+
+        try {
+            $notes = $request->input('notes');
+            $this->replacementService->rejectReplacement($replacement, Auth::user(), $request->input('rejection_reason'), $notes);
+
+            return redirect()->route('master.participants.candidate-replacements', ['status' => 'rejected'])
+                ->with('success', 'Candidate replacement request has been rejected.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Failed to reject replacement: ' . $e->getMessage());
+        }
+    }
 }
+

@@ -21,6 +21,7 @@ class ParticipantResource extends JsonResource
             'batch_id' => $this->batch_id,
             'mobile' => $this->mobile,
             'email' => $this->email,
+            'birth_date' => $this->birth_date ? \Carbon\Carbon::parse($this->birth_date)->format('Y-m-d') : null,
             'address' => $this->address,
             'city' => $this->city,
             'state' => $this->state,

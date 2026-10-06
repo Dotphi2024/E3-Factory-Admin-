@@ -21,6 +21,7 @@ class AuthController extends Controller
             'mobile' => 'required|unique:participants,mobile',
             'batch_id' => 'required',
             'device_token' => 'required',
+            'birth_date' => 'nullable|date',
             // 'reference' => 'required',
             // 'reference_detail'=> 'required',
         ], [
@@ -53,6 +54,7 @@ class AuthController extends Controller
         $participant->mobile = $request->mobile;
         $participant->batch_id = $request->batch_id;
         $participant->email = $request->email;
+        $participant->birth_date = !empty($request->birth_date) ? date('Y-m-d', strtotime($request->birth_date)) : null;
         $participant->address = $request->address;
         $participant->country = $request->country;
         $participant->state = $request->state;
@@ -205,6 +207,7 @@ class AuthController extends Controller
             'first_name' => 'required',
             'last_name' => 'required',
             'mobile' => 'required|numeric|unique:participants,mobile,'.$request->participant->id,
+            'birth_date' => 'nullable|date',
         ]);
         if ($validator->fails()) {
             $messages = $validator->getMessageBag();
@@ -217,6 +220,9 @@ class AuthController extends Controller
         $participant->first_name = $request->first_name;
         $participant->last_name = $request->last_name;
         $participant->email = $request->email;
+        if ($request->has('birth_date')) {
+            $participant->birth_date = !empty($request->birth_date) ? date('Y-m-d', strtotime($request->birth_date)) : null;
+        }
         $participant->mobile = $request->mobile;
         $participant->address = $request->address;
         $participant->country = $request->country;

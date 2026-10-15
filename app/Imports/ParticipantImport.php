@@ -15,29 +15,65 @@ use Auth;
 
 class ParticipantImport implements WithHeadingRow,ToModel,WithChunkReading
 {
+   protected $sendWhatsapp;
+   protected $importedCount = 0;
+
+   public function __construct(bool $sendWhatsapp = false)
+   {
+       $this->sendWhatsapp = $sendWhatsapp;
+   }
+
+   public function getImportedCount(): int
+   {
+       return $this->importedCount;
+   }
+
    public function model(array $row){
+      // Keep execution limit fresh during large imports
+      set_time_limit(60);
+
       if(empty(array_filter($row))){
         return null;
       }
-      $batch = Batch::where('name',$row['batch_name'])->first();
+
+      $batchName = trim($row['batch_name'] ?? '');
+      if(empty($batchName)){
+        return null;
+      }
+
+      $batch = Batch::where('name', $batchName)
+                    ->orWhereRaw('TRIM(LOWER(name)) = ?', [strtolower($batchName)])
+                    ->first();
       if(!$batch){
+        Log::warning("Batch not found during participant import: " . $batchName);
         return null;
       }
-      if(!$row['mobile']){
+
+      $rawMobile = trim((string)($row['mobile'] ?? ''));
+      $cleanMobile = preg_replace('/[^0-9]/', '', $rawMobile);
+      if(empty($cleanMobile)){
         return null;
       }
-      $participant = Participant::where('mobile',$row['mobile'])->first();
+      // If starts with 91 and has 12 digits, strip country code for DB matching
+      if(strlen($cleanMobile) === 12 && substr($cleanMobile, 0, 2) === '91'){
+        $cleanMobile = substr($cleanMobile, 2);
+      }
+
+      $participant = Participant::where('mobile', $cleanMobile)
+                                ->orWhere('mobile', $rawMobile)
+                                ->first();
       if($participant){
         return null;
       }
+
       try{
         DB::beginTransaction();
         $participant = new Participant();
-        $participant->first_name = $row['first_name'];
-        $participant->last_name = $row['last_name'];
-        $participant->mobile = $row['mobile'];
+        $participant->first_name = trim($row['first_name'] ?? '');
+        $participant->last_name = trim($row['last_name'] ?? '');
+        $participant->mobile = $cleanMobile;
         $participant->batch_id = $batch->id;
-        $participant->email = $row['email'];
+        $participant->email = trim($row['email'] ?? '');
         if (!empty($row['birth_date'])) {
             try {
                 if (is_numeric($row['birth_date'])) {
@@ -46,28 +82,29 @@ class ParticipantImport implements WithHeadingRow,ToModel,WithChunkReading
                     $participant->birth_date = date('Y-m-d', strtotime($row['birth_date']));
                 }
             } catch (\Exception $e) {
-                Log::warning("Failed to parse birth_date during import for row mobile " . $row['mobile'] . ": " . $e->getMessage());
+                Log::warning("Failed to parse birth_date during import for row mobile " . $cleanMobile . ": " . $e->getMessage());
             }
         }
-        $participant->address = $row['address'];
-        $participant->country = $row['country'];
-        $participant->state = $row['state'];
-        $participant->city = $row['city'];
+        $participant->address = $row['address'] ?? null;
+        $participant->country = $row['country'] ?? null;
+        $participant->state = $row['state'] ?? null;
+        $participant->city = $row['city'] ?? null;
         $participant->reference = $row['reference'] ?? null;
-        if (!empty($row['reference']) && strtolower($row['reference']) === 'member' && !empty($row['reference_detail'])) {
-            $referrer = Participant::where('mobile', $row['reference_detail'])
-                ->orWhere(DB::raw("CONCAT(first_name, ' ', last_name)"), $row['reference_detail'])
+        if (!empty($row['reference']) && strtolower(trim($row['reference'])) === 'member' && !empty($row['reference_detail'])) {
+            $refDetail = trim($row['reference_detail']);
+            $referrer = Participant::where('mobile', $refDetail)
+                ->orWhere(DB::raw("CONCAT(first_name, ' ', last_name)"), $refDetail)
                 ->first();
             if ($referrer) {
                 $participant->reference_detail = $referrer->id;
             } else {
-                $participant->reference_detail = $row['reference_detail'];
+                $participant->reference_detail = $refDetail;
             }
         } else {
             $participant->reference_detail = $row['reference_detail'] ?? null;
         }
         $participant->type = 'student';
-        $participant->added_by = Auth::user()->id;
+        $participant->added_by = Auth::id() ?? 1;
 
         $register_amount = floatval($row['register_amount'] ?? $row['registration_amount'] ?? 0);
 
@@ -104,31 +141,46 @@ class ParticipantImport implements WithHeadingRow,ToModel,WithChunkReading
         }
 
         DB::commit();
+        $this->importedCount++;
 
-        // Send automated WhatsApp confirmation to the imported participant
-        try {
-            $msgContent = "Dear " . $participant->first_name . " " . $participant->last_name . ",\n\n" .
-                           "Thank you for registering. We have received your registration payment of Rs. " . $register_amount . ".\n" .
-                           "Your pending amount is Rs. " . $participant->due_amount . ".\n\n" .
-                           "Best regards,\nE3 Admin Team";
+        // Send automated WhatsApp confirmation only if enabled
+        if ($this->sendWhatsapp) {
+            try {
+                $batchRegFee = floatval($batch->registration_fee ?? 0);
+                if ($register_amount >= $batchRegFee) {
+                    $msgContent = "Dear {$participant->first_name} {$participant->last_name},\n\n" .
+                                  "Thank you for registering for {$batch->name} with E3!\n\n" .
+                                  "We have successfully received your registration payment of ₹" . number_format($register_amount) . ".\n\n" .
+                                  "Status: Registration Confirmed.\n\n" .
+                                  "Warm regards,\nE3 Admin Team";
+                } else {
+                    $pendingRegFee = max(0, $batchRegFee - $register_amount);
+                    $msgContent = "Dear {$participant->first_name} {$participant->last_name},\n\n" .
+                                  "Thank you for registering for {$batch->name} with E3!\n\n" .
+                                  "We have received your partial registration payment of ₹" . number_format($register_amount) . ".\n\n" .
+                                  "Pending Registration Fee: ₹" . number_format($pendingRegFee) . ".\n\n" .
+                                  "Kindly clear your pending registration fee to confirm your seat.\n\n" .
+                                  "Warm regards,\nE3 Admin Team";
+                }
 
-            $mobile = preg_replace('/[^0-9]/', '', $participant->mobile);
-            if (strlen($mobile) === 10) {
-                $mobile = '91' . $mobile;
+                $mobile = preg_replace('/[^0-9]/', '', $participant->mobile);
+                if (strlen($mobile) === 10) {
+                    $mobile = '91' . $mobile;
+                }
+
+                $apiUrl   = env('WHATSAPP_API_URL', 'https://api.dotphi.com/wapp/v2/api/send');
+                $apiToken = env('WHATSAPP_API_TOKEN', '');
+
+                if (!empty($apiToken) && !empty($mobile)) {
+                    \Illuminate\Support\Facades\Http::timeout(5)->connectTimeout(3)->get($apiUrl, [
+                        'apikey' => $apiToken,
+                        'mobile' => $mobile,
+                        'msg'    => $msgContent,
+                    ]);
+                }
+            } catch (\Exception $ex) {
+                Log::error("Failed to send automatic WhatsApp message on Excel Import for " . $participant->mobile . ": " . $ex->getMessage());
             }
-
-            $apiUrl   = env('WHATSAPP_API_URL', 'http://api.dotphi.com/wapp/v2/api/send');
-            $apiToken = env('WHATSAPP_API_TOKEN', '');
-
-            if (!empty($apiToken) && !empty($mobile)) {
-                \Illuminate\Support\Facades\Http::get($apiUrl, [
-                    'apikey' => $apiToken,
-                    'mobile' => $mobile,
-                    'msg'    => $msgContent,
-                ]);
-            }
-        } catch (\Exception $ex) {
-            Log::error("Failed to send automatic WhatsApp message on Excel Import for " . $participant->mobile . ": " . $ex->getMessage());
         }
       }
       catch(\Exception $e){

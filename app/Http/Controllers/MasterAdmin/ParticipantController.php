@@ -470,12 +470,24 @@ class ParticipantController extends Controller
                 //               "Welcome to the E3 Club! " .
                 //               "Best regards,\nE3 Admin Team";
                                
-              $msgContent = "Dear {$participant->first_name} {$participant->last_name},\n\n" .
-              "Thank you for registering with E3!\n\n" .
-              "We have successfully received your registration payment of ₹" . number_format($paid_amount) . ".\n\n" .
-              "Welcome to E3!\n\n" .
-              "Warm regards,\n" .
-              "E3 Admin Team";
+                $batchRegFee = floatval($batch->registration_fee ?? 0);
+                if ($paid_amount >= $batchRegFee) {
+                    $msgContent = "Dear {$participant->first_name} {$participant->last_name},\n\n" .
+                                  "Thank you for registering for {$batch->name} with E3!\n\n" .
+                                  "We have successfully received your registration payment of ₹" . number_format($batchRegFee) . ".\n\n" .
+                                  "Status: Registration Confirmed.\n\n" .
+                                  "Warm regards,\n" .
+                                  "E3 Admin Team";
+                } else {
+                    $pendingRegFee = max(0, $batchRegFee - $paid_amount);
+                    $msgContent = "Dear {$participant->first_name} {$participant->last_name},\n\n" .
+                                  "Thank you for registering for {$batch->name} with E3!\n\n" .
+                                  "We have received your partial registration payment of ₹" . number_format($paid_amount) . ".\n\n" .
+                                  "Pending Registration Fee: ₹" . number_format($pendingRegFee) . ".\n\n" .
+                                  "Kindly clear your pending registration fee to confirm your seat.\n\n" .
+                                  "Warm regards,\n" .
+                                  "E3 Admin Team";
+                }
                                
                 $this->trigger_whatsapp_message($participant->mobile, $msgContent);
             } catch (\Exception $ex) {
@@ -596,9 +608,15 @@ class ParticipantController extends Controller
             return back()->withError($messages->first());
         }
         try{
-            Excel::import(new ParticipantImport, request()->file('file'));
+            // Prevent execution timeout during large Excel processing and external API calls
+            ini_set('max_execution_time', 0);
+            set_time_limit(0);
 
-            return back()->withSuccess('Participants Imported Successfully');
+            $sendWhatsapp = $request->boolean('send_whatsapp', false);
+            $import = new ParticipantImport($sendWhatsapp);
+            Excel::import($import, request()->file('file'));
+
+            return back()->withSuccess('Participants Imported Successfully' . ($import->getImportedCount() > 0 ? " ({$import->getImportedCount()} records imported)" : ''));
         }
         catch(Exception $e){
             return back()->withError($e->getMessage());

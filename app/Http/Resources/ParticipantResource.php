@@ -21,17 +21,21 @@ class ParticipantResource extends JsonResource
             'batch_id' => $this->batch_id,
             'mobile' => $this->mobile,
             'email' => $this->email,
-            'birth_date' => $this->birth_date ? \Carbon\Carbon::parse($this->birth_date)->format('Y-m-d') : null,
+
+            'birth_date' => $this->birth_date ? ($this->birth_date instanceof \Carbon\Carbon ? $this->birth_date->format('Y-m-d') : substr($this->birth_date, 0, 10)) : null,
+
             'address' => $this->address,
             'city' => $this->city,
             'state' => $this->state,
             'country' => $this->country,
             'is_coach'=> $this->is_coach ? 1 : 0,
+            'reference_by'=> $this->reference,
             'reference'=> $this->reference,
             'reference_detail'=> $this->reference_detail,
             'profile_photo'=> $this->profile_photo ? asset('uploads/participants/profile-photos/'.$this->profile_photo) : '',
             'is_multiple_batch'=>$this->participantBatches->count() > 1 ? 'yes' : 'no',
             'is_registration_fees_paid'=> $this->is_registration_fees_paid ? 1 : 0,
+            'payment_status'=> $this->payment_status ?: ($this->is_registration_fees_paid ? 'paid' : 'unpaid'),
             'batch'=> $this->whenLoaded('batch'),
         ];
     }

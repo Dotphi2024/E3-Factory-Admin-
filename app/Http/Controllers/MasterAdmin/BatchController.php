@@ -20,6 +20,7 @@ use Rinvex\Country\CountryLoader;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\FcmNotificationService;
+use App\Services\AssignmentService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -454,8 +455,20 @@ class BatchController extends Controller
     }
 
     public function view_session_assignment($id){
-        $batch_schedule = BatchSchedule::with('assignments')->findOrFail($id);
-        return view('master.batch.view-session-assignment',compact('batch_schedule'));
+        $batch_schedule = BatchSchedule::with(['assignments.options', 'batch'])->findOrFail($id);
+
+        // Auto-release assignments if 6:00 PM on session day has been reached
+        AssignmentService::autoReleaseForSchedule($batch_schedule, $this->fcmNotificationService);
+        $batch_schedule->load('assignments.options');
+
+        $autoReleaseInfo = AssignmentService::getAutoReleaseStatus($batch_schedule);
+
+        // Fetch all batches with their schedules and assignments count for the Copy modal
+        $allBatches = Batch::with(['schedules' => function($q) {
+            $q->withCount('assignments')->orderBy('session_number', 'asc');
+        }])->orderBy('id', 'desc')->get();
+
+        return view('master.batch.view-session-assignment', compact('batch_schedule', 'autoReleaseInfo', 'allBatches'));
     }
     public function add_session_assignment($id){
         $batch_schedule = BatchSchedule::findOrFail($id);
@@ -578,6 +591,141 @@ class BatchController extends Controller
         $assignment = Assignment::findOrFail($id);
         $assignment->delete();
         return redirect()->back()->with('success', 'Assignment Deleted Successfully');
+    }
+
+    public function copy_session_assignments(Request $request, $id)
+    {
+        $request->validate([
+            'source_schedule_id' => 'required|exists:batch_schedules,id',
+            'target_schedule_id' => 'nullable|exists:batch_schedules,id',
+            'action_type' => 'nullable|in:append,replace',
+        ]);
+
+        $targetScheduleId = $request->target_schedule_id ?? $id;
+        $targetSchedule = BatchSchedule::findOrFail($targetScheduleId);
+        $sourceSchedule = BatchSchedule::with(['assignments.options'])->findOrFail($request->source_schedule_id);
+
+        if ($sourceSchedule->id == $targetSchedule->id) {
+            return redirect()->back()->with('error', 'Source and Target sessions cannot be the same.');
+        }
+
+        if ($sourceSchedule->assignments->isEmpty()) {
+            return redirect()->back()->with('error', 'The selected source session has no assignments to copy.');
+        }
+
+        try {
+            DB::beginTransaction();
+
+            if ($request->action_type === 'replace') {
+                // Delete existing assignments in target schedule
+                $existingAssignments = Assignment::where('batch_schedule_id', $targetSchedule->id)->get();
+                foreach ($existingAssignments as $oldAsgn) {
+                    $oldAsgn->options()->delete();
+                    $oldAsgn->delete();
+                }
+            }
+
+            $copiedCount = 0;
+            foreach ($sourceSchedule->assignments as $sourceAssignment) {
+                $newAssignment = new Assignment();
+                $newAssignment->batch_id = $targetSchedule->batch_id;
+                $newAssignment->batch_schedule_id = $targetSchedule->id;
+                $newAssignment->question = $sourceAssignment->question;
+                $newAssignment->option_type = $sourceAssignment->option_type;
+                $newAssignment->is_file_upload = $sourceAssignment->is_file_upload ?? 0;
+                $newAssignment->is_started = 0;
+                $newAssignment->added_by = Auth::id() ?? 0;
+                $newAssignment->save();
+
+                if ($sourceAssignment->option_type === 'options') {
+                    foreach ($sourceAssignment->options as $sourceOption) {
+                        $newOption = new AssignmentOption();
+                        $newOption->batch_id = $targetSchedule->batch_id;
+                        $newOption->batch_schedule_id = $targetSchedule->id;
+                        $newOption->assignment_id = $newAssignment->id;
+                        $newOption->option = $sourceOption->option;
+                        $newOption->mark = $sourceOption->mark;
+                        $newOption->save();
+                    }
+                }
+
+                $copiedCount++;
+            }
+
+            // Check if target schedule is already due for 6 PM auto-release
+            AssignmentService::autoReleaseForSchedule($targetSchedule, $this->fcmNotificationService);
+
+            DB::commit();
+
+            return redirect()->route('master.batches.view-session-assignment', $targetSchedule->id)
+                ->with('success', "{$copiedCount} assignment(s) successfully copied to session '{$targetSchedule->name}'!");
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Failed to copy assignments: ' . $e->getMessage());
+        }
+    }
+
+    public function duplicate_session_assignment($id)
+    {
+        $sourceAssignment = Assignment::with('options')->findOrFail($id);
+        $schedule = BatchSchedule::findOrFail($sourceAssignment->batch_schedule_id);
+
+        try {
+            DB::beginTransaction();
+
+            $newAssignment = new Assignment();
+            $newAssignment->batch_id = $sourceAssignment->batch_id;
+            $newAssignment->batch_schedule_id = $sourceAssignment->batch_schedule_id;
+            $newAssignment->question = $sourceAssignment->question . ' (Copy)';
+            $newAssignment->option_type = $sourceAssignment->option_type;
+            $newAssignment->is_file_upload = $sourceAssignment->is_file_upload ?? 0;
+            $newAssignment->is_started = 0;
+            $newAssignment->added_by = Auth::id() ?? 0;
+            $newAssignment->save();
+
+            if ($sourceAssignment->option_type === 'options') {
+                foreach ($sourceAssignment->options as $sourceOption) {
+                    $newOption = new AssignmentOption();
+                    $newOption->batch_id = $sourceAssignment->batch_id;
+                    $newOption->batch_schedule_id = $sourceAssignment->batch_schedule_id;
+                    $newOption->assignment_id = $newAssignment->id;
+                    $newOption->option = $sourceOption->option;
+                    $newOption->mark = $sourceOption->mark;
+                    $newOption->save();
+                }
+            }
+
+            // Check if schedule is already due for auto-release
+            AssignmentService::autoReleaseForSchedule($schedule, $this->fcmNotificationService);
+
+            DB::commit();
+
+            return redirect()->route('master.batches.view-session-assignment', $sourceAssignment->batch_schedule_id)
+                ->with('success', 'Assignment duplicated successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Failed to duplicate assignment: ' . $e->getMessage());
+        }
+    }
+
+    public function get_batch_sessions_for_copy($batch_id)
+    {
+        $batch = Batch::with(['schedules' => function ($q) {
+            $q->withCount('assignments')->orderBy('session_number', 'asc');
+        }])->findOrFail($batch_id);
+
+        return response()->json([
+            'success' => true,
+            'schedules' => $batch->schedules->map(function ($sch) {
+                return [
+                    'id' => $sch->id,
+                    'name' => $sch->name,
+                    'session_number' => $sch->session_number,
+                    'date' => $sch->date,
+                    'assignments_count' => $sch->assignments_count,
+                ];
+            }),
+        ]);
     }
 
     public function start_stop_session_assignment($id){

@@ -20,6 +20,7 @@ use App\Models\Meeting;
 use App\Models\MeetingAttendance;
 use App\Models\CandidateReplacement;
 use App\Services\CandidateReplacementService;
+use App\Services\AssignmentService;
 use Illuminate\Support\Facades\Validator;
 
 class ParticipantApiController extends Controller
@@ -468,6 +469,9 @@ class ParticipantApiController extends Controller
         }
     }
     public function getSessionByActiveAssignmentForParticipant(Request $request){
+        // Auto-release any assignments due at 6:00 PM on session day
+        AssignmentService::autoReleaseAllDue();
+
         $batch_schedules = BatchSchedule::whereHas('assignments',function ($query) use ($request){
             $query->where('batch_id', $request->participant->batch_id)
             ->where('is_started',1);
@@ -506,6 +510,10 @@ class ParticipantApiController extends Controller
                 'message' => 'No active session found'
             ]);
         }
+
+        // Auto-release assignments for this schedule if 6:00 PM condition is met
+        AssignmentService::autoReleaseForSchedule($batch_schedule);
+
         $assignments = Assignment::with('options')->where('batch_schedule_id', $request->batch_schedule_id)->where('is_started',1)
         ->whereDoesntHave('submissions',function ($query) use ($participant){
             $query->where('participant_id', $participant->id);

@@ -12,7 +12,29 @@ class Participant extends Model
     protected $casts = [
         'birth_date' => 'date',
         'is_active' => 'boolean',
+        'is_registration_fees_paid' => 'boolean',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($participant) {
+            // Keep payment_status and is_registration_fees_paid synchronized
+            if ($participant->isDirty('is_registration_fees_paid') && !$participant->isDirty('payment_status')) {
+                $participant->payment_status = $participant->is_registration_fees_paid ? 'paid' : 'unpaid';
+            } elseif ($participant->isDirty('payment_status') && !$participant->isDirty('is_registration_fees_paid')) {
+                $participant->is_registration_fees_paid = ($participant->payment_status === 'paid') ? 1 : 0;
+            } elseif (empty($participant->payment_status)) {
+                $participant->payment_status = $participant->is_registration_fees_paid ? 'paid' : 'unpaid';
+            }
+        });
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid' || (bool) $this->is_registration_fees_paid;
+    }
 
     public function batch()
     {

@@ -22,7 +22,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('session:send-whatsapp-reminders')->dailyAt('08:00');
 
         // Send pending fee WhatsApp reminders every Monday at 10:00 AM
+
+        $schedule->command('participants:send-fee-due-reminders')->weeklyOn(1, '10:00');
+
+        // Auto-release session assignments at 6:00 PM on session day
+        $schedule->command('assignments:auto-release')->everyFifteenMinutes();
+
         // $schedule->command('participants:send-fee-due-reminders')->weeklyOn(1, '10:00');
+
     }
 
     /**

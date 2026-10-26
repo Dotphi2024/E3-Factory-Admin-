@@ -20,6 +20,7 @@ class AuthController extends Controller
             'last_name' => 'required|string|max:191',
             'mobile' => 'required|unique:participants,mobile',
             'batch_id' => 'required',
+
             'email' => 'nullable|email|max:191',
             'birth_date' => 'nullable',
             'address' => 'nullable|string',
@@ -30,6 +31,7 @@ class AuthController extends Controller
             'reference' => 'nullable|string|max:191',
             'reference_detail' => 'nullable|string|max:191',
             'device_token' => 'nullable|string',
+
         ], [
             'batch_id.required' => 'Batch is required',
             'first_name.required' => 'First name is required',
@@ -60,6 +62,7 @@ class AuthController extends Controller
         $participant->batch_id = $request->batch_id;
         $participant->email = $request->email;
 
+
         // Parse birth_date supporting YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY
         if ($request->filled('birth_date')) {
             $rawBirthDate = trim((string) $request->birth_date);
@@ -78,6 +81,7 @@ class AuthController extends Controller
                 }
             }
         }
+
 
         $participant->address = $request->address;
         $participant->country = $request->country;
@@ -328,6 +332,7 @@ class AuthController extends Controller
             'first_name' => 'required',
             'last_name' => 'required',
             'mobile' => 'required|numeric|unique:participants,mobile,'.$request->participant->id,
+            'birth_date' => 'nullable|date',
         ]);
         if ($validator->fails()) {
             $messages = $validator->getMessageBag();
@@ -340,6 +345,9 @@ class AuthController extends Controller
         $participant->first_name = $request->first_name;
         $participant->last_name = $request->last_name;
         $participant->email = $request->email;
+        if ($request->has('birth_date')) {
+            $participant->birth_date = !empty($request->birth_date) ? date('Y-m-d', strtotime($request->birth_date)) : null;
+        }
         $participant->mobile = $request->mobile;
         $participant->address = $request->address;
         $participant->country = $request->country;

@@ -21,7 +21,9 @@ class ParticipantResource extends JsonResource
             'batch_id' => $this->batch_id,
             'mobile' => $this->mobile,
             'email' => $this->email,
+
             'birth_date' => $this->birth_date ? ($this->birth_date instanceof \Carbon\Carbon ? $this->birth_date->format('Y-m-d') : substr($this->birth_date, 0, 10)) : null,
+
             'address' => $this->address,
             'city' => $this->city,
             'state' => $this->state,

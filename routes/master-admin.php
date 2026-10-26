@@ -107,6 +107,9 @@ Route::middleware(['auth'])->prefix('master')->group(function () {
         Route::get('edit-session-assignment/{id}', [BatchController::class, 'edit_session_assignment'])->name('master.batches.edit-session-assignment')->middleware('permission:batch edit');
         Route::post('edit-session-assignment/{id}', [BatchController::class, 'update_session_assignment'])->name('master.batches.update-session-assignment')->middleware('permission:batch edit');
         Route::get('delete-session-assignment/{id}', [BatchController::class, 'delete_session_assignment'])->name('master.batches.delete-session-assignment')->middleware('permission:batch edit');
+        Route::post('copy-session-assignments/{id}', [BatchController::class, 'copy_session_assignments'])->name('master.batches.copy-session-assignments')->middleware('permission:batch edit');
+        Route::get('duplicate-session-assignment/{id}', [BatchController::class, 'duplicate_session_assignment'])->name('master.batches.duplicate-session-assignment')->middleware('permission:batch edit');
+        Route::get('get-batch-sessions-for-copy/{batch_id}', [BatchController::class, 'get_batch_sessions_for_copy'])->name('master.batches.get-batch-sessions-for-copy')->middleware('permission:batch edit');
         Route::get('start-stop-session-assignment/{id}', [BatchController::class, 'start_stop_session_assignment'])->name('master.batches.start-stop-session-assignment')->middleware('permission:batch edit');
         Route::get('start-all-session-assignment/{id}', [BatchController::class, 'start_all_session_assignments'])->name('master.batches.start-all-session-assignment')->middleware('permission:batch edit');
         Route::get('stop-all-session-assignment/{id}', [BatchController::class, 'stop_all_session_assignments'])->name('master.batches.stop-all-session-assignment')->middleware('permission:batch edit');

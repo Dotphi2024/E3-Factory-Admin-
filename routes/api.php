@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\ParticipantApiController;
+use App\Http\Controllers\Api\RazorpayPaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +21,12 @@ Route::get('test-notification', [AuthController::class, 'testNotification']);
 Route::post('login', [AuthController::class, 'login']);
 Route::post('register', [AuthController::class, 'register']);
 Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
+
+// Razorpay Payment & Member Paid/Unpaid Status Routes
+Route::post('razorpay/create-order', [RazorpayPaymentController::class, 'createOrder']);
+Route::post('razorpay/verify-payment', [RazorpayPaymentController::class, 'verifyPayment']);
+Route::match(['get', 'post'], 'payment-status', [RazorpayPaymentController::class, 'checkPaymentStatus']);
+Route::post('razorpay/webhook', [RazorpayPaymentController::class, 'webhook']);
 Route::get('getBatches', [ApiController::class, 'getBatches']);
 Route::get('getPhotoGalleryForGuest', [ApiController::class, 'getPhotoGalleryForGuest']);
 Route::get('getVideoGalleryForGuest', [ApiController::class, 'getVideoGalleryForGuest']);
@@ -65,6 +72,9 @@ Route::middleware(['verify_auth_token'])->group(function () {
 
     //Registration Payment
     Route::post('registration-payment', [ApiController::class, 'registrationPayment']);
+    Route::post('payment/create-order', [RazorpayPaymentController::class, 'createOrder']);
+    Route::post('payment/verify', [RazorpayPaymentController::class, 'verifyPayment']);
+    Route::match(['get', 'post'], 'payment/status', [RazorpayPaymentController::class, 'checkPaymentStatus']);
 
     // Coach Registration Banner
     Route::get('coach-registration-banner', [ApiController::class, 'coachRegistrationBanner']);
